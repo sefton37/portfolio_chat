@@ -26,8 +26,9 @@ from prometheus_client import (
 from pydantic import BaseModel, Field
 
 from portfolio_chat.config import SERVER
+from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator import PipelineOrchestrator
-from portfolio_chat.utils.logging import generate_request_id, request_id_var, setup_logging
+from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -162,20 +163,41 @@ class ChatResponseModel(BaseModel):
     metadata: ChatResponseMetadata
 
 
-# Global orchestrator instance
+# Contact endpoint models
+class ContactRequest(BaseModel):
+    """Contact form request body."""
+
+    message: str = Field(..., min_length=1, max_length=5000)
+    sender_name: str | None = Field(None, max_length=100)
+    sender_email: str | None = Field(None, max_length=254)
+    context: str | None = Field(None, max_length=2000)  # Conversation summary
+    conversation_id: str | None = Field(None, max_length=100)
+
+
+class ContactResponseModel(BaseModel):
+    """Contact API response."""
+
+    success: bool
+    message_id: str | None = None
+    error: str | None = None
+
+
+# Global instances
 orchestrator: PipelineOrchestrator | None = None
+contact_storage: ContactStorage | None = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan manager."""
-    global orchestrator
+    global orchestrator, contact_storage
 
     # Startup
     setup_logging(level=SERVER.LOG_LEVEL)
     logger.info("Starting Portfolio Chat server...")
 
     orchestrator = PipelineOrchestrator()
+    contact_storage = ContactStorage()
 
     # Check Ollama connection
     health = await orchestrator.health_check()
@@ -184,6 +206,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.warning(f"Ollama not available: {health.get('ollama_error', 'unknown')}")
 
+    logger.info(f"Contact storage: {contact_storage.storage_dir}")
     logger.info(f"Server ready on {SERVER.HOST}:{SERVER.PORT}")
 
     yield
@@ -303,6 +326,54 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseModel:
             conversation_id="",
         ),
     )
+
+
+@app.post("/contact", response_model=ContactResponseModel)
+async def contact(request: Request, body: ContactRequest) -> ContactResponseModel:
+    """
+    Contact form endpoint.
+
+    Stores a message from a visitor for later review.
+    Can include optional sender info and conversation context.
+    """
+    global contact_storage
+
+    if contact_storage is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    client_ip = get_client_ip(request)
+    ip_hash = hash_ip(client_ip)
+
+    # Basic email validation if provided
+    if body.sender_email and "@" not in body.sender_email:
+        return ContactResponseModel(
+            success=False,
+            error="Invalid email format",
+        )
+
+    try:
+        stored = await contact_storage.store(
+            message=body.message,
+            sender_name=body.sender_name,
+            sender_email=body.sender_email,
+            context=body.context,
+            ip_hash=ip_hash,
+            conversation_id=body.conversation_id,
+        )
+
+        logger.info(f"Contact message stored: {stored.id}")
+
+        return ContactResponseModel(
+            success=True,
+            message_id=stored.id,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to store contact message: {e}")
+        return ContactResponseModel(
+            success=False,
+            error="Failed to store message. Please try again.",
+        )
 
 
 @app.get("/health")

@@ -71,5 +71,9 @@ Thumbs.db
 # Project specific
 .claude/
 
+# Contact messages (keep directory structure, exclude actual messages)
+data/contacts/*.json
+!data/contacts/.gitkeep
+
 # Jupyter Notebooks (if any)
 .ipynb_checkpoints/

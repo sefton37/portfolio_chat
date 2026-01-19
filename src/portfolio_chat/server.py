@@ -31,29 +31,51 @@ from portfolio_chat.utils.logging import generate_request_id, request_id_var, se
 
 logger = logging.getLogger(__name__)
 
-# Prometheus metrics
-CHAT_REQUESTS = Counter(
+
+# Prometheus metrics - use helper to avoid duplicate registration on reload
+def _get_or_create_counter(name: str, description: str, labels: list[str]) -> Counter:
+    """Get existing counter or create new one."""
+    if name in REGISTRY._names_to_collectors:
+        return REGISTRY._names_to_collectors[name]  # type: ignore
+    return Counter(name, description, labels)
+
+
+def _get_or_create_histogram(
+    name: str, description: str, labels: list[str] | None = None, buckets: list[float] | None = None
+) -> Histogram:
+    """Get existing histogram or create new one."""
+    if name in REGISTRY._names_to_collectors:
+        return REGISTRY._names_to_collectors[name]  # type: ignore
+    kwargs: dict[str, Any] = {}
+    if labels:
+        kwargs["labelnames"] = labels
+    if buckets:
+        kwargs["buckets"] = buckets
+    return Histogram(name, description, **kwargs)
+
+
+CHAT_REQUESTS = _get_or_create_counter(
     "chat_requests_total",
     "Total chat requests",
     ["status", "domain"],
 )
 
-CHAT_DURATION = Histogram(
+CHAT_DURATION = _get_or_create_histogram(
     "chat_request_duration_seconds",
     "Chat request duration in seconds",
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
 )
 
-LAYER_BLOCKED = Counter(
+LAYER_BLOCKED = _get_or_create_counter(
     "chat_layer_blocked_total",
     "Requests blocked by layer",
     ["layer", "reason"],
 )
 
-OLLAMA_CALLS = Histogram(
+OLLAMA_CALLS = _get_or_create_histogram(
     "ollama_call_duration_seconds",
     "Ollama API call duration",
-    ["model"],
+    labels=["model"],
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 

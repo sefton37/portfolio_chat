@@ -271,12 +271,29 @@ class AsyncOllamaClient:
         if not content:
             raise OllamaResponseError("Empty response from Ollama")
 
-        # Parse the JSON content
+        # Parse the JSON content, stripping markdown code blocks if present
+        cleaned_content = self._strip_markdown_json(content)
         try:
-            return json.loads(content)
+            return json.loads(cleaned_content)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON from model output: {content[:200]}")
             raise OllamaResponseError(f"Model output is not valid JSON: {e}") from e
+
+    @staticmethod
+    def _strip_markdown_json(content: str) -> str:
+        """Strip markdown code blocks from JSON content."""
+        content = content.strip()
+        # Handle ```json ... ``` or ``` ... ```
+        if content.startswith("```"):
+            lines = content.split("\n")
+            # Remove first line (```json or ```)
+            if lines:
+                lines = lines[1:]
+            # Remove last line if it's just ```
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            content = "\n".join(lines)
+        return content.strip()
 
     async def chat_with_history(
         self,

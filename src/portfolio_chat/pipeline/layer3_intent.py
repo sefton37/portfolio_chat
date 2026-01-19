@@ -97,7 +97,7 @@ VALID TOPICS (choose the most specific that applies):
 - achievements: Awards, accomplishments, successes
 - hobbies: Personal interests, volunteering, FIRST robotics
 - philosophy: Problem-solving approach, values, working style
-- contact: How to reach Kel, LinkedIn, networking
+- contact: How to reach Kellogg, LinkedIn, networking
 - chat_system: Questions about this chat interface itself
 - general: General or unclear topics
 

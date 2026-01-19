@@ -94,7 +94,7 @@ class Layer9Deliverer:
         "RATE_LIMITED": "Please wait a moment before sending another message.",
         "INPUT_TOO_LONG": "Your message is a bit long. Could you shorten it?",
         "BLOCKED_INPUT": "I can only answer questions about Kellogg's professional background and projects.",
-        "OUT_OF_SCOPE": "I'm designed to answer questions about Kel's work and projects. For other topics, I'd recommend a general AI assistant.",
+        "OUT_OF_SCOPE": "I'm designed to answer questions about Kellogg's work and projects. For other topics, I'd recommend a general AI assistant.",
         "SAFETY_FAILED": "Let me rephrase that...",
         "INTERNAL_ERROR": "I'm having some technical difficulties. Please try again.",
     }
@@ -212,7 +212,7 @@ class Layer9Deliverer:
             "RATE_LIMITED": "Please wait a moment before sending another message.",
             "INPUT_TOO_LONG": "Your message is quite long. Could you try asking a shorter question?",
             "BLOCKED_INPUT": "I can only answer questions about Kellogg's professional background, projects, and related topics. Is there something in that area I can help with?",
-            "OUT_OF_SCOPE": "I'm designed to discuss Kel's professional work and projects. For other topics, a general AI assistant might be more helpful. What would you like to know about Kel's experience?",
+            "OUT_OF_SCOPE": "I'm designed to discuss Kellogg's professional work and projects. For other topics, a general AI assistant might be more helpful. What would you like to know about Kellogg's experience?",
             "SAFETY_FAILED": "Let me try again. I'd be happy to discuss my professional background and projects. What would you like to know?",
             "INTERNAL_ERROR": "I'm experiencing some technical difficulties right now. Please try your question again in a moment.",
         }

@@ -1,4 +1,4 @@
-# Kellogg (Kel) Brengel
+# Kellogg Brengel
 
 ## Summary
 

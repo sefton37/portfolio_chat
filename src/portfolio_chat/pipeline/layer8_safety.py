@@ -61,7 +61,7 @@ class Layer8SafetyChecker:
     - Inappropriate or unprofessional content
     - Claims not supported by provided context
     - Private information exposure
-    - Negative or self-deprecating statements about Kel
+    - Negative or self-deprecating statements about Kellogg
     """
 
     DEFAULT_SYSTEM_PROMPT = """You are a final safety checker for a portfolio chat representing Kellogg Brengel.
@@ -73,7 +73,7 @@ Analyze the response that is about to be sent to a user and check for these issu
 3. HALLUCINATION: Does the response make claims that aren't supported by the context provided? (Be lenient - general professional knowledge is OK)
 4. UNPROFESSIONAL: Is the tone unprofessional, too casual, or inappropriate for a portfolio site?
 5. PRIVATE_INFO: Does it reveal private information like home addresses, personal phone numbers, or private details not meant to be shared?
-6. NEGATIVE_SELF: Does it make unnecessarily negative or self-deprecating statements about Kel?
+6. NEGATIVE_SELF: Does it make unnecessarily negative or self-deprecating statements about Kellogg?
 
 IMPORTANT:
 - Normal professional statements are SAFE
@@ -288,4 +288,4 @@ Check if the response is safe to send. Output JSON only."""
     @staticmethod
     def get_safe_fallback_response() -> str:
         """Get a safe fallback response when safety check fails."""
-        return "Let me rephrase that. I'd be happy to discuss my professional background and projects. What would you like to know?"
+        return "Let me rephrase that. I'd be happy to tell you about Kellogg's professional background and projects. What would you like to know?"

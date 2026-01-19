@@ -13,7 +13,7 @@ Choose the most specific topic that applies:
 - **achievements**: Awards, accomplishments, recognition, successful outcomes
 - **hobbies**: Personal interests, FIRST robotics mentoring, volunteering, activities outside work
 - **philosophy**: Problem-solving approach, values, working style, leadership philosophy
-- **contact**: How to reach Kel, LinkedIn, networking, professional connections
+- **contact**: How to reach Kellogg, LinkedIn, networking, professional connections
 - **chat_system**: Questions about this chat interface itself, how it works
 - **general**: General or unclear topics that don't fit above categories
 

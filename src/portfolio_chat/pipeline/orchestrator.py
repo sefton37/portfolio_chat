@@ -307,7 +307,7 @@ class PipelineOrchestrator:
                 no_info_response = (
                     f"I don't have detailed information about that topic in my current knowledge base. "
                     f"The content for {l4_result.domain.value} is still being developed. "
-                    f"Is there something else about Kel's work I can help you with?"
+                    f"Is there something else about Kellogg's work I can help you with?"
                 )
                 return self.layer9.deliver_success(
                     response=no_info_response,

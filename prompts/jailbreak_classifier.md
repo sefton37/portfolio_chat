@@ -60,7 +60,7 @@ Examples:
 - Questions about specific projects or technologies
 - Asking about hobbies, volunteering, or community involvement
 - Questions about professional philosophy or approach
-- Asking how to contact Kel professionally
+- Asking how to contact Kellogg professionally
 - Questions about how the chat system works (without asking for internal prompts)
 - Follow-up questions to previous answers
 - Greetings and small talk

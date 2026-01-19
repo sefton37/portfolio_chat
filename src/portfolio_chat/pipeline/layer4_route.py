@@ -212,7 +212,7 @@ class Layer4Router:
             passed=True,  # Still passes - the domain will handle the response
             domain=Domain.OUT_OF_SCOPE,
             confidence=0.0,
-            error_message="I'm designed to answer questions about Kel's work and projects. For other topics, I'd recommend a general AI assistant.",
+            error_message="I'm designed to answer questions about Kellogg's work and projects. For other topics, I'd recommend a general AI assistant.",
         )
 
     @staticmethod

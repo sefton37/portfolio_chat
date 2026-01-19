@@ -50,7 +50,7 @@ class Layer6Generator:
     """
 
     # Default system prompt template (fallback if file not found)
-    DEFAULT_SYSTEM_PROMPT = """You are Talking Rock, a portfolio assistant representing Kel (Kellogg Brengel).
+    DEFAULT_SYSTEM_PROMPT = """You are Talking Rock, a portfolio assistant representing Kellogg (Kellogg Brengel).
 
 You embody "No One"—presence without imposition, helpfulness without manipulation.
 
@@ -64,7 +64,7 @@ GUIDELINES:
 1. Wait to be invited—don't volunteer information not asked for
 2. Reflect rather than sell—let the work speak for itself
 3. Protect attention—be concise and direct, no filler or corporate-speak
-4. Stay within bounds—represent Kel's public work, you are not Kel
+4. Stay within bounds—represent Kellogg's public work, you are not Kellogg
 5. Make reasoning visible when explaining decisions
 6. Only share information from the provided context
 7. If uncertain, say so rather than fabricating
@@ -191,7 +191,7 @@ DOMAIN: {domain}"""
             return Layer6Result(
                 status=Layer6Status.SUCCESS,
                 passed=True,
-                response="I'm designed to answer questions about Kel's work, projects, and professional background. For other topics, I'd recommend a general AI assistant. Is there something about Kel's experience or projects I can help you with?",
+                response="I'm designed to answer questions about Kellogg's work, projects, and professional background. For other topics, I'd recommend a general AI assistant. Is there something about Kellogg's experience or projects I can help you with?",
                 model_used=self.model,
             )
 
@@ -253,12 +253,12 @@ DOMAIN: {domain}"""
     async def generate_fallback_response(self, domain: Domain) -> str:
         """Generate a fallback response when main generation fails."""
         fallbacks = {
-            Domain.PROFESSIONAL: "I'd be happy to tell you about my professional experience. Could you ask your question again?",
-            Domain.PROJECTS: "I have several projects I'd love to discuss. What would you like to know?",
-            Domain.HOBBIES: "I enjoy various activities outside of work. What aspect are you curious about?",
-            Domain.PHILOSOPHY: "I have thoughts on problem-solving and work philosophy. What would you like to explore?",
-            Domain.LINKEDIN: "Feel free to connect with me on LinkedIn! Is there something specific you'd like to discuss?",
-            Domain.META: "This chat system is designed to answer questions about my professional background. How can I help?",
-            Domain.OUT_OF_SCOPE: "I'm focused on discussing my professional background and projects. Is there something in that area I can help with?",
+            Domain.PROFESSIONAL: "I'd be happy to tell you about Kellogg's professional experience. Could you ask your question again?",
+            Domain.PROJECTS: "Kellogg has several projects I'd love to tell you about. What would you like to know?",
+            Domain.HOBBIES: "Kellogg enjoys various activities outside of work. What aspect are you curious about?",
+            Domain.PHILOSOPHY: "Kellogg has interesting thoughts on problem-solving and work philosophy. What would you like to explore?",
+            Domain.LINKEDIN: "Feel free to connect with Kellogg on LinkedIn! Is there something specific you'd like to know?",
+            Domain.META: "I'm Talking Rock, an AI assistant here to answer questions about Kellogg's professional background. How can I help?",
+            Domain.OUT_OF_SCOPE: "I'm here to discuss Kellogg's professional background and projects. Is there something in that area I can help with?",
         }
-        return fallbacks.get(domain, "I'd be happy to help. Could you rephrase your question?")
+        return fallbacks.get(domain, "I'd be happy to help you learn about Kellogg's work. Could you rephrase your question?")

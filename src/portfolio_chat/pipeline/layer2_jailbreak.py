@@ -170,6 +170,8 @@ OUTPUT FORMAT (JSON only, no explanation):
                 user=user_prompt,
                 model=self.model,
                 timeout=MODELS.CLASSIFIER_TIMEOUT,
+                layer="L2",
+                purpose="jailbreak_detection",
             )
 
             classification = response.get("classification", "BLOCKED").upper()

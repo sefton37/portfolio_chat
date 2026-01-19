@@ -195,6 +195,8 @@ DOMAIN: {domain}"""
                 model=self.model,
                 timeout=MODELS.GENERATOR_TIMEOUT,
                 temperature=0.7,
+                layer="L6",
+                purpose="response_generation",
             )
 
             # Clean up response

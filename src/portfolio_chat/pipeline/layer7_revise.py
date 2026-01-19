@@ -166,6 +166,8 @@ Review the response and check for issues. Output JSON only."""
                 user=revision_request,
                 model=self.model,
                 timeout=MODELS.GENERATOR_TIMEOUT,
+                layer="L7",
+                purpose="response_revision",
             )
 
             needs_revision = result.get("needs_revision", False)

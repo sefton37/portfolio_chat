@@ -152,6 +152,8 @@ Check if the response is safe to send. Output JSON only."""
                 user=check_request,
                 model=self.model,
                 timeout=MODELS.CLASSIFIER_TIMEOUT,
+                layer="L8",
+                purpose="output_safety_check",
             )
 
             is_safe = result.get("safe", False)

@@ -59,6 +59,10 @@ class ChatResponse:
                 "request_id": self.metadata.request_id,
                 "response_time_ms": round(self.metadata.response_time_ms, 2),
                 "conversation_id": self.metadata.conversation_id,
+                "layer_timings_ms": {
+                    layer: round(timing * 1000, 2)
+                    for layer, timing in self.metadata.layer_timings.items()
+                } if self.metadata.layer_timings else {},
             }
 
         return result

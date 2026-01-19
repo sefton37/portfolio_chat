@@ -75,9 +75,51 @@ LAYER_BLOCKED = _get_or_create_counter(
 OLLAMA_CALLS = _get_or_create_histogram(
     "ollama_call_duration_seconds",
     "Ollama API call duration",
-    labels=["model"],
+    labels=["model", "layer", "purpose"],
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
+
+LAYER_DURATION = _get_or_create_histogram(
+    "chat_layer_duration_seconds",
+    "Duration of each pipeline layer",
+    labels=["layer"],
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0],
+)
+
+INTENT_CONFIDENCE = _get_or_create_histogram(
+    "chat_intent_confidence",
+    "Intent parser confidence scores",
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
+
+DOMAIN_REQUESTS = _get_or_create_counter(
+    "chat_domain_requests_total",
+    "Requests by domain",
+    ["domain"],
+)
+
+CONVERSATION_TURNS = _get_or_create_histogram(
+    "chat_conversation_turns",
+    "Number of turns in conversations",
+    buckets=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+)
+
+RESPONSE_LENGTH = _get_or_create_histogram(
+    "chat_response_length_chars",
+    "Length of bot responses in characters",
+    buckets=[50, 100, 200, 500, 1000, 2000, 5000],
+)
+
+# Export metrics for use by other modules
+METRICS = {
+    "ollama_calls": OLLAMA_CALLS,
+    "layer_duration": LAYER_DURATION,
+    "intent_confidence": INTENT_CONFIDENCE,
+    "domain_requests": DOMAIN_REQUESTS,
+    "conversation_turns": CONVERSATION_TURNS,
+    "response_length": RESPONSE_LENGTH,
+    "layer_blocked": LAYER_BLOCKED,
+}
 
 
 # Request/Response models
@@ -108,6 +150,7 @@ class ChatResponseMetadata(BaseModel):
     request_id: str
     response_time_ms: float
     conversation_id: str
+    layer_timings_ms: dict[str, float] = {}
 
 
 class ChatResponseModel(BaseModel):

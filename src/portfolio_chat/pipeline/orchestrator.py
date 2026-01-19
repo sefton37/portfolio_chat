@@ -17,16 +17,25 @@ from portfolio_chat.pipeline.layer0_network import Layer0NetworkGateway, Layer0S
 from portfolio_chat.pipeline.layer1_sanitize import Layer1Sanitizer, Layer1Status
 from portfolio_chat.pipeline.layer2_jailbreak import Layer2JailbreakDetector
 from portfolio_chat.pipeline.layer3_intent import Layer3IntentParser
-from portfolio_chat.pipeline.layer4_route import Layer4Router
+from portfolio_chat.pipeline.layer4_route import Domain, Layer4Router
 from portfolio_chat.pipeline.layer5_context import Layer5ContextRetriever
 from portfolio_chat.pipeline.layer6_generate import Layer6Generator
 from portfolio_chat.pipeline.layer7_revise import Layer7Reviser
 from portfolio_chat.pipeline.layer8_safety import Layer8SafetyChecker
 from portfolio_chat.pipeline.layer9_deliver import ChatResponse, Layer9Deliverer
-from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var
+from portfolio_chat.utils.logging import audit_logger, generate_request_id, hash_ip, request_id_var
 from portfolio_chat.utils.rate_limit import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
+
+
+def _get_metrics() -> dict | None:
+    """Lazy import metrics to avoid circular imports."""
+    try:
+        from portfolio_chat.server import METRICS
+        return METRICS
+    except ImportError:
+        return None
 
 
 @dataclass
@@ -170,6 +179,16 @@ class PipelineOrchestrator:
 
             sanitized_message = l1_result.sanitized_input or message
 
+            # Log user message with full content
+            audit_logger.log_user_message(
+                request_id=request_id,
+                conversation_id=conv_id,
+                turn=metrics.conversation_turn,
+                raw_message=message,
+                sanitized_message=sanitized_message,
+                ip_hash=ip_hash,
+            )
+
             # ===== LAYER 2: Jailbreak Detection =====
             l2_start = time.time()
             conversation_history = conversation.get_history()
@@ -179,6 +198,16 @@ class PipelineOrchestrator:
                 ip_hash=ip_hash,
             )
             metrics.layer_timings["L2"] = time.time() - l2_start
+
+            # Log L2 safety check result
+            audit_logger.log_safety_check(
+                request_id=request_id,
+                layer="L2",
+                passed=not l2_result.blocked,
+                classification=l2_result.status.value if l2_result.status else "UNKNOWN",
+                confidence=l2_result.confidence,
+                reason=l2_result.reason.value if l2_result.reason else None,
+            )
 
             if l2_result.blocked:
                 metrics.blocked_at_layer = "L2"
@@ -210,6 +239,16 @@ class PipelineOrchestrator:
                     confidence=0.0,
                 )
 
+            # Log intent parsing result
+            audit_logger.log_intent_parsed(
+                request_id=request_id,
+                topic=intent.topic,
+                question_type=intent.question_type.value,
+                entities=intent.entities,
+                emotional_tone=intent.emotional_tone.value if hasattr(intent.emotional_tone, 'value') else str(intent.emotional_tone),
+                confidence=intent.confidence,
+            )
+
             # ===== LAYER 4: Domain Routing =====
             l4_start = time.time()
             l4_result = self.layer4.route(
@@ -219,6 +258,14 @@ class PipelineOrchestrator:
             metrics.layer_timings["L4"] = time.time() - l4_start
             metrics.domain_matched = l4_result.domain.value
 
+            # Log domain routing result
+            audit_logger.log_domain_routed(
+                request_id=request_id,
+                domain=l4_result.domain.value,
+                confidence=l4_result.confidence,
+                fallback_used=l4_result.domain == Domain.OUT_OF_SCOPE,
+            )
+
             # ===== LAYER 5: Context Retrieval =====
             l5_start = time.time()
             l5_result = self.layer5.retrieve(
@@ -226,6 +273,14 @@ class PipelineOrchestrator:
                 _intent=intent,
             )
             metrics.layer_timings["L5"] = time.time() - l5_start
+
+            # Log context retrieval result
+            audit_logger.log_context_retrieved(
+                request_id=request_id,
+                domain=l4_result.domain.value,
+                sources_used=l5_result.sources_loaded,
+                context_length=len(l5_result.context) if l5_result.context else 0,
+            )
 
             # ===== LAYER 6: Response Generation =====
             l6_start = time.time()
@@ -263,10 +318,32 @@ class PipelineOrchestrator:
             )
             metrics.layer_timings["L8"] = time.time() - l8_start
 
+            # Log L8 safety check result
+            audit_logger.log_safety_check(
+                request_id=request_id,
+                layer="L8",
+                passed=l8_result.passed,
+                classification=l8_result.status,
+                confidence=1.0,  # L8 doesn't provide confidence scores
+                reason=", ".join(i.value for i in l8_result.issues) if l8_result.issues else None,
+            )
+
+            revised = l7_result.was_revised if hasattr(l7_result, 'was_revised') else False
+
             if not l8_result.passed:
                 metrics.blocked_at_layer = "L8"
                 # Use safe fallback instead of error
                 final_response = Layer8SafetyChecker.get_safe_fallback_response()
+
+            # Log the final bot response
+            audit_logger.log_bot_response(
+                request_id=request_id,
+                conversation_id=conv_id,
+                turn=metrics.conversation_turn,
+                response=final_response,
+                domain=l4_result.domain.value,
+                revised=revised,
+            )
 
             # ===== Update Conversation History =====
             await self.conversation_manager.add_message(
@@ -277,6 +354,34 @@ class PipelineOrchestrator:
             )
 
             # ===== LAYER 9: Response Delivery =====
+            total_time_ms = (time.time() - start_time) * 1000
+
+            # Log layer timings
+            audit_logger.log_layer_timing(
+                request_id=request_id,
+                layer_timings=metrics.layer_timings,
+                total_time_ms=total_time_ms,
+            )
+
+            # Record Prometheus metrics
+            prom_metrics = _get_metrics()
+            if prom_metrics:
+                # Record per-layer durations
+                for layer, duration in metrics.layer_timings.items():
+                    prom_metrics["layer_duration"].labels(layer=layer).observe(duration)
+
+                # Record intent confidence
+                prom_metrics["intent_confidence"].observe(intent.confidence)
+
+                # Record domain request
+                prom_metrics["domain_requests"].labels(domain=l4_result.domain.value).inc()
+
+                # Record conversation turn
+                prom_metrics["conversation_turns"].observe(metrics.conversation_turn + 1)
+
+                # Record response length
+                prom_metrics["response_length"].observe(len(final_response))
+
             return self.layer9.deliver_success(
                 response=final_response,
                 domain=l4_result.domain,

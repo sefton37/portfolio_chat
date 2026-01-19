@@ -174,6 +174,8 @@ OUTPUT FORMAT (JSON only):
                 user=f"Parse the intent of this message:\n\n{message}",
                 model=self.model,
                 timeout=MODELS.CLASSIFIER_TIMEOUT,
+                layer="L3",
+                purpose="intent_parsing",
             )
 
             # Parse response

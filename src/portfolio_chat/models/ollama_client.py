@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -21,8 +22,23 @@ from tenacity import (
 )
 
 from portfolio_chat.config import MODELS
+from portfolio_chat.utils.logging import audit_logger, request_id_var
 
 logger = logging.getLogger(__name__)
+
+
+def _get_metrics() -> dict | None:
+    """Lazy import metrics to avoid circular imports."""
+    try:
+        from portfolio_chat.server import METRICS
+        return METRICS
+    except ImportError:
+        return None
+
+
+def _approx_tokens(text: str) -> int:
+    """Rough approximation of token count (4 chars per token)."""
+    return len(text) // 4
 
 
 # Exception hierarchy with recoverability flags
@@ -118,6 +134,8 @@ class AsyncOllamaClient:
         model: str | None = None,
         timeout: float | None = None,
         temperature: float = 0.7,
+        layer: str | None = None,
+        purpose: str | None = None,
     ) -> str:
         """
         Send a chat request and get a text response.
@@ -128,6 +146,8 @@ class AsyncOllamaClient:
             model: Model to use. Falls back to default/config.
             timeout: Request timeout in seconds.
             temperature: Sampling temperature.
+            layer: Which pipeline layer is calling (for metrics).
+            purpose: Purpose of the call (for metrics).
 
         Returns:
             The generated text response.
@@ -140,6 +160,11 @@ class AsyncOllamaClient:
         """
         resolved_model = self._resolve_model(model)
         effective_timeout = timeout or MODELS.GENERATOR_TIMEOUT
+        start_time = time.time()
+        request_id = request_id_var.get()
+        success = False
+        error_msg = None
+        content = ""
 
         client = await self._get_client()
 
@@ -161,36 +186,70 @@ class AsyncOllamaClient:
                 json=payload,
                 timeout=effective_timeout,
             )
+
+            if response.status_code == 404:
+                error_msg = f"Model not found: {resolved_model}"
+                raise OllamaModelError(error_msg)
+
+            if response.status_code != 200:
+                error_text = response.text[:500]
+                error_msg = f"Ollama returned status {response.status_code}: {error_text}"
+                logger.error(f"Ollama error response: {response.status_code} - {error_text}")
+                raise OllamaModelError(error_msg)
+
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON response: {e}"
+                raise OllamaResponseError(error_msg) from e
+
+            message = data.get("message", {})
+            content = message.get("content", "")
+
+            if not content:
+                error_msg = "Empty response from Ollama"
+                raise OllamaResponseError(error_msg)
+
+            success = True
+            return content
+
         except httpx.ConnectError as e:
+            error_msg = f"Failed to connect to Ollama: {e}"
             logger.warning(f"Connection error to Ollama: {e}")
-            raise OllamaConnectionError(f"Failed to connect to Ollama: {e}") from e
+            raise OllamaConnectionError(error_msg) from e
         except httpx.TimeoutException as e:
+            error_msg = f"Ollama request timed out: {e}"
             logger.warning(f"Timeout calling Ollama: {e}")
-            raise OllamaTimeoutError(f"Ollama request timed out: {e}") from e
+            raise OllamaTimeoutError(error_msg) from e
         except httpx.HTTPError as e:
+            error_msg = f"HTTP error: {e}"
             logger.error(f"HTTP error calling Ollama: {e}")
-            raise OllamaConnectionError(f"HTTP error: {e}") from e
+            raise OllamaConnectionError(error_msg) from e
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
 
-        if response.status_code == 404:
-            raise OllamaModelError(f"Model not found: {resolved_model}")
+            # Record metrics
+            prom_metrics = _get_metrics()
+            if prom_metrics and layer and purpose:
+                prom_metrics["ollama_calls"].labels(
+                    model=resolved_model,
+                    layer=layer,
+                    purpose=purpose,
+                ).observe(duration_ms / 1000)
 
-        if response.status_code != 200:
-            error_text = response.text[:500]
-            logger.error(f"Ollama error response: {response.status_code} - {error_text}")
-            raise OllamaModelError(f"Ollama returned status {response.status_code}: {error_text}")
-
-        try:
-            data = response.json()
-        except json.JSONDecodeError as e:
-            raise OllamaResponseError(f"Invalid JSON response: {e}") from e
-
-        message = data.get("message", {})
-        content = message.get("content", "")
-
-        if not content:
-            raise OllamaResponseError("Empty response from Ollama")
-
-        return content
+            # Log LLM call
+            if request_id and layer:
+                audit_logger.log_llm_call(
+                    request_id=request_id,
+                    layer=layer,
+                    model=resolved_model,
+                    purpose=purpose or "text_generation",
+                    prompt_tokens_approx=_approx_tokens(system + user),
+                    response_tokens_approx=_approx_tokens(content),
+                    duration_ms=duration_ms,
+                    success=success,
+                    error=error_msg,
+                )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -204,6 +263,8 @@ class AsyncOllamaClient:
         user: str,
         model: str | None = None,
         timeout: float | None = None,
+        layer: str | None = None,
+        purpose: str | None = None,
     ) -> dict[str, Any]:
         """
         Send a chat request expecting JSON output.
@@ -213,6 +274,8 @@ class AsyncOllamaClient:
             user: User message.
             model: Model to use.
             timeout: Request timeout in seconds.
+            layer: Which pipeline layer is calling (for metrics).
+            purpose: Purpose of the call (for metrics).
 
         Returns:
             Parsed JSON response as a dictionary.
@@ -222,6 +285,11 @@ class AsyncOllamaClient:
         """
         resolved_model = self._resolve_model(model)
         effective_timeout = timeout or MODELS.CLASSIFIER_TIMEOUT
+        start_time = time.time()
+        request_id = request_id_var.get()
+        success = False
+        error_msg = None
+        content = ""
 
         client = await self._get_client()
 
@@ -244,40 +312,76 @@ class AsyncOllamaClient:
                 json=payload,
                 timeout=effective_timeout,
             )
+
+            if response.status_code == 404:
+                error_msg = f"Model not found: {resolved_model}"
+                raise OllamaModelError(error_msg)
+
+            if response.status_code != 200:
+                error_text = response.text[:500]
+                error_msg = f"Ollama returned status {response.status_code}: {error_text}"
+                raise OllamaModelError(error_msg)
+
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON response from Ollama: {e}"
+                raise OllamaResponseError(error_msg) from e
+
+            content = data.get("message", {}).get("content", "")
+
+            if not content:
+                error_msg = "Empty response from Ollama"
+                raise OllamaResponseError(error_msg)
+
+            # Parse the JSON content, stripping markdown code blocks if present
+            cleaned_content = self._strip_markdown_json(content)
+            try:
+                result = json.loads(cleaned_content)
+                success = True
+                return result
+            except json.JSONDecodeError as e:
+                error_msg = f"Model output is not valid JSON: {e}"
+                logger.warning(f"Failed to parse JSON from model output: {content[:200]}")
+                raise OllamaResponseError(error_msg) from e
+
         except httpx.ConnectError as e:
+            error_msg = f"Failed to connect to Ollama: {e}"
             logger.warning(f"Connection error to Ollama: {e}")
-            raise OllamaConnectionError(f"Failed to connect to Ollama: {e}") from e
+            raise OllamaConnectionError(error_msg) from e
         except httpx.TimeoutException as e:
+            error_msg = f"Ollama request timed out: {e}"
             logger.warning(f"Timeout calling Ollama: {e}")
-            raise OllamaTimeoutError(f"Ollama request timed out: {e}") from e
+            raise OllamaTimeoutError(error_msg) from e
         except httpx.HTTPError as e:
+            error_msg = f"HTTP error: {e}"
             logger.error(f"HTTP error calling Ollama: {e}")
-            raise OllamaConnectionError(f"HTTP error: {e}") from e
+            raise OllamaConnectionError(error_msg) from e
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
 
-        if response.status_code == 404:
-            raise OllamaModelError(f"Model not found: {resolved_model}")
+            # Record metrics
+            prom_metrics = _get_metrics()
+            if prom_metrics and layer and purpose:
+                prom_metrics["ollama_calls"].labels(
+                    model=resolved_model,
+                    layer=layer,
+                    purpose=purpose,
+                ).observe(duration_ms / 1000)
 
-        if response.status_code != 200:
-            error_text = response.text[:500]
-            raise OllamaModelError(f"Ollama returned status {response.status_code}: {error_text}")
-
-        try:
-            data = response.json()
-        except json.JSONDecodeError as e:
-            raise OllamaResponseError(f"Invalid JSON response from Ollama: {e}") from e
-
-        content = data.get("message", {}).get("content", "")
-
-        if not content:
-            raise OllamaResponseError("Empty response from Ollama")
-
-        # Parse the JSON content, stripping markdown code blocks if present
-        cleaned_content = self._strip_markdown_json(content)
-        try:
-            return json.loads(cleaned_content)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON from model output: {content[:200]}")
-            raise OllamaResponseError(f"Model output is not valid JSON: {e}") from e
+            # Log LLM call
+            if request_id and layer:
+                audit_logger.log_llm_call(
+                    request_id=request_id,
+                    layer=layer,
+                    model=resolved_model,
+                    purpose=purpose or "json_classification",
+                    prompt_tokens_approx=_approx_tokens(system + user),
+                    response_tokens_approx=_approx_tokens(content),
+                    duration_ms=duration_ms,
+                    success=success,
+                    error=error_msg,
+                )
 
     @staticmethod
     def _strip_markdown_json(content: str) -> str:
@@ -302,6 +406,8 @@ class AsyncOllamaClient:
         model: str | None = None,
         timeout: float | None = None,
         temperature: float = 0.7,
+        layer: str | None = None,
+        purpose: str | None = None,
     ) -> str:
         """
         Send a chat request with conversation history.
@@ -312,16 +418,26 @@ class AsyncOllamaClient:
             model: Model to use.
             timeout: Request timeout in seconds.
             temperature: Sampling temperature.
+            layer: Which pipeline layer is calling (for metrics).
+            purpose: Purpose of the call (for metrics).
 
         Returns:
             The generated text response.
         """
         resolved_model = self._resolve_model(model)
         effective_timeout = timeout or MODELS.GENERATOR_TIMEOUT
+        start_time = time.time()
+        request_id = request_id_var.get()
+        success = False
+        error_msg = None
+        content = ""
 
         client = await self._get_client()
 
         all_messages = [{"role": "system", "content": system}] + messages
+
+        # Calculate prompt size for logging
+        prompt_text = system + "".join(m.get("content", "") for m in messages)
 
         payload = {
             "model": resolved_model,
@@ -338,31 +454,65 @@ class AsyncOllamaClient:
                 json=payload,
                 timeout=effective_timeout,
             )
+
+            if response.status_code == 404:
+                error_msg = f"Model not found: {resolved_model}"
+                raise OllamaModelError(error_msg)
+
+            if response.status_code != 200:
+                error_text = response.text[:500]
+                error_msg = f"Ollama returned status {response.status_code}: {error_text}"
+                raise OllamaModelError(error_msg)
+
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                error_msg = f"Invalid JSON response: {e}"
+                raise OllamaResponseError(error_msg) from e
+
+            content = data.get("message", {}).get("content", "")
+
+            if not content:
+                error_msg = "Empty response from Ollama"
+                raise OllamaResponseError(error_msg)
+
+            success = True
+            return content
+
         except httpx.ConnectError as e:
-            raise OllamaConnectionError(f"Failed to connect to Ollama: {e}") from e
+            error_msg = f"Failed to connect to Ollama: {e}"
+            raise OllamaConnectionError(error_msg) from e
         except httpx.TimeoutException as e:
-            raise OllamaTimeoutError(f"Ollama request timed out: {e}") from e
+            error_msg = f"Ollama request timed out: {e}"
+            raise OllamaTimeoutError(error_msg) from e
         except httpx.HTTPError as e:
-            raise OllamaConnectionError(f"HTTP error: {e}") from e
+            error_msg = f"HTTP error: {e}"
+            raise OllamaConnectionError(error_msg) from e
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
 
-        if response.status_code == 404:
-            raise OllamaModelError(f"Model not found: {resolved_model}")
+            # Record metrics
+            prom_metrics = _get_metrics()
+            if prom_metrics and layer and purpose:
+                prom_metrics["ollama_calls"].labels(
+                    model=resolved_model,
+                    layer=layer,
+                    purpose=purpose,
+                ).observe(duration_ms / 1000)
 
-        if response.status_code != 200:
-            error_text = response.text[:500]
-            raise OllamaModelError(f"Ollama returned status {response.status_code}: {error_text}")
-
-        try:
-            data = response.json()
-        except json.JSONDecodeError as e:
-            raise OllamaResponseError(f"Invalid JSON response: {e}") from e
-
-        content = data.get("message", {}).get("content", "")
-
-        if not content:
-            raise OllamaResponseError("Empty response from Ollama")
-
-        return content
+            # Log LLM call
+            if request_id and layer:
+                audit_logger.log_llm_call(
+                    request_id=request_id,
+                    layer=layer,
+                    model=resolved_model,
+                    purpose=purpose or "chat_with_history",
+                    prompt_tokens_approx=_approx_tokens(prompt_text),
+                    response_tokens_approx=_approx_tokens(content),
+                    duration_ms=duration_ms,
+                    success=success,
+                    error=error_msg,
+                )
 
     async def chat_stream(
         self,

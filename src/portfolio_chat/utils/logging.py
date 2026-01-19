@@ -236,6 +236,279 @@ class AuditLogger:
             },
         )
 
+    def log_user_message(
+        self,
+        request_id: str,
+        conversation_id: str,
+        turn: int,
+        raw_message: str,
+        sanitized_message: str,
+        ip_hash: str,
+    ) -> None:
+        """
+        Log the full user message for audit trail.
+
+        Args:
+            request_id: Unique request ID.
+            conversation_id: Conversation ID.
+            turn: Conversation turn number.
+            raw_message: Original user input.
+            sanitized_message: Message after sanitization.
+            ip_hash: Anonymized IP hash.
+        """
+        self._logger.info(
+            "User message received",
+            extra={
+                "extra_data": {
+                    "event": "user_message",
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "turn": turn,
+                    "ip_hash": ip_hash,
+                    "raw_message": raw_message,
+                    "sanitized_message": sanitized_message,
+                    "raw_length": len(raw_message),
+                    "sanitized_length": len(sanitized_message),
+                }
+            },
+        )
+
+    def log_bot_response(
+        self,
+        request_id: str,
+        conversation_id: str,
+        turn: int,
+        response: str,
+        domain: str,
+        revised: bool,
+    ) -> None:
+        """
+        Log the full bot response for audit trail.
+
+        Args:
+            request_id: Unique request ID.
+            conversation_id: Conversation ID.
+            turn: Conversation turn number.
+            response: Final response content.
+            domain: Matched domain.
+            revised: Whether L7 revision was applied.
+        """
+        self._logger.info(
+            "Bot response generated",
+            extra={
+                "extra_data": {
+                    "event": "bot_response",
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "turn": turn,
+                    "response": response,
+                    "response_length": len(response),
+                    "domain": domain,
+                    "revised": revised,
+                }
+            },
+        )
+
+    def log_intent_parsed(
+        self,
+        request_id: str,
+        topic: str,
+        question_type: str,
+        entities: list[str],
+        emotional_tone: str,
+        confidence: float,
+    ) -> None:
+        """
+        Log intent parsing results (L3).
+
+        Args:
+            request_id: Unique request ID.
+            topic: Parsed topic.
+            question_type: Type of question.
+            entities: Extracted entities.
+            emotional_tone: Detected tone.
+            confidence: Parser confidence score.
+        """
+        self._logger.info(
+            "Intent parsed",
+            extra={
+                "extra_data": {
+                    "event": "intent_parsed",
+                    "request_id": request_id,
+                    "topic": topic,
+                    "question_type": question_type,
+                    "entities": entities,
+                    "emotional_tone": emotional_tone,
+                    "confidence": confidence,
+                }
+            },
+        )
+
+    def log_domain_routed(
+        self,
+        request_id: str,
+        domain: str,
+        confidence: float,
+        fallback_used: bool,
+    ) -> None:
+        """
+        Log domain routing decision (L4).
+
+        Args:
+            request_id: Unique request ID.
+            domain: Routed domain.
+            confidence: Routing confidence.
+            fallback_used: Whether fallback routing was used.
+        """
+        self._logger.info(
+            "Domain routed",
+            extra={
+                "extra_data": {
+                    "event": "domain_routed",
+                    "request_id": request_id,
+                    "domain": domain,
+                    "confidence": confidence,
+                    "fallback_used": fallback_used,
+                }
+            },
+        )
+
+    def log_context_retrieved(
+        self,
+        request_id: str,
+        domain: str,
+        sources_used: list[str],
+        context_length: int,
+    ) -> None:
+        """
+        Log context retrieval details (L5).
+
+        Args:
+            request_id: Unique request ID.
+            domain: Domain used for retrieval.
+            sources_used: List of context source names.
+            context_length: Total context character count.
+        """
+        self._logger.info(
+            "Context retrieved",
+            extra={
+                "extra_data": {
+                    "event": "context_retrieved",
+                    "request_id": request_id,
+                    "domain": domain,
+                    "sources_used": sources_used,
+                    "context_length": context_length,
+                }
+            },
+        )
+
+    def log_llm_call(
+        self,
+        request_id: str,
+        layer: str,
+        model: str,
+        purpose: str,
+        prompt_tokens_approx: int,
+        response_tokens_approx: int,
+        duration_ms: float,
+        success: bool,
+        error: str | None = None,
+    ) -> None:
+        """
+        Log an LLM call with full details.
+
+        Args:
+            request_id: Unique request ID.
+            layer: Which layer made the call (L2, L3, L6, etc).
+            model: Model name used.
+            purpose: Purpose of the call (classify, parse, generate, etc).
+            prompt_tokens_approx: Approximate prompt token count.
+            response_tokens_approx: Approximate response token count.
+            duration_ms: Call duration in milliseconds.
+            success: Whether call succeeded.
+            error: Error message if failed.
+        """
+        self._logger.info(
+            "LLM call completed",
+            extra={
+                "extra_data": {
+                    "event": "llm_call",
+                    "request_id": request_id,
+                    "layer": layer,
+                    "model": model,
+                    "purpose": purpose,
+                    "prompt_tokens_approx": prompt_tokens_approx,
+                    "response_tokens_approx": response_tokens_approx,
+                    "duration_ms": duration_ms,
+                    "success": success,
+                    "error": error,
+                }
+            },
+        )
+
+    def log_layer_timing(
+        self,
+        request_id: str,
+        layer_timings: dict[str, float],
+        total_time_ms: float,
+    ) -> None:
+        """
+        Log all layer timings for a request.
+
+        Args:
+            request_id: Unique request ID.
+            layer_timings: Dict of layer name to timing in seconds.
+            total_time_ms: Total request time in milliseconds.
+        """
+        # Convert to ms for consistency
+        timings_ms = {k: round(v * 1000, 2) for k, v in layer_timings.items()}
+        self._logger.info(
+            "Layer timings",
+            extra={
+                "extra_data": {
+                    "event": "layer_timings",
+                    "request_id": request_id,
+                    "timings_ms": timings_ms,
+                    "total_time_ms": round(total_time_ms, 2),
+                }
+            },
+        )
+
+    def log_safety_check(
+        self,
+        request_id: str,
+        layer: str,
+        passed: bool,
+        classification: str,
+        confidence: float,
+        reason: str | None = None,
+    ) -> None:
+        """
+        Log safety check results (L2 jailbreak, L8 output safety).
+
+        Args:
+            request_id: Unique request ID.
+            layer: Which layer (L2 or L8).
+            passed: Whether the check passed.
+            classification: Classification result (SAFE/BLOCKED/UNSAFE).
+            confidence: Classifier confidence.
+            reason: Reason code if blocked.
+        """
+        self._logger.info(
+            "Safety check completed",
+            extra={
+                "extra_data": {
+                    "event": "safety_check",
+                    "request_id": request_id,
+                    "layer": layer,
+                    "passed": passed,
+                    "classification": classification,
+                    "confidence": confidence,
+                    "reason": reason,
+                }
+            },
+        )
+
 
 # Module-level audit logger instance
 audit_logger = AuditLogger()

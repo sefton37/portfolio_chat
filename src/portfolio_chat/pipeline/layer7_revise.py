@@ -85,11 +85,12 @@ If the response needs improvement, respond with:
 
         Args:
             client: Ollama client instance.
-            model: Model to use for revision (same as generator).
+            model: Model to use for revision (uses verifier model by default for independent check).
             min_length: Minimum response length to trigger revision.
         """
         self.client = client or AsyncOllamaClient()
-        self.model = model or MODELS.GENERATOR_MODEL
+        # Use verifier model (different from generator) to avoid self-reinforcing bias
+        self.model = model or MODELS.VERIFIER_MODEL
         self.min_length = min_length or self.MIN_LENGTH_FOR_REVISION
         self._loaded_prompt: str | None = None
 

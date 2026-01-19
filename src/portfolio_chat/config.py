@@ -87,6 +87,13 @@ class ModelConfig:
     # Tier 2: Generation model (7B-8B)
     GENERATOR_MODEL: str = _env_str("GENERATOR_MODEL", "mistral:7b")
 
+    # Tier 3: Verifier model for L7/L8 (should be different from generator to avoid self-reinforcing bias)
+    # Defaults to classifier model (smaller, different perspective)
+    VERIFIER_MODEL: str = _env_str("VERIFIER_MODEL", _env_str("CLASSIFIER_MODEL", "qwen2.5:0.5b"))
+
+    # Embedding model for semantic verification
+    EMBEDDING_MODEL: str = _env_str("EMBEDDING_MODEL", "nomic-embed-text")
+
     # Ollama settings
     OLLAMA_URL: str = _env_str("OLLAMA_URL", "http://localhost:11434")
 

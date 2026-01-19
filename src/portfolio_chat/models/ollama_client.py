@@ -609,3 +609,98 @@ class AsyncOllamaClient:
         data = response.json()
         models = data.get("models", [])
         return [m.get("name", "") for m in models if m.get("name")]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        retry=retry_if_exception_type((OllamaConnectionError, OllamaTimeoutError)),
+        reraise=True,
+    )
+    async def embed(
+        self,
+        text: str,
+        model: str | None = None,
+        timeout: float = 30.0,
+    ) -> list[float]:
+        """
+        Generate embeddings for text.
+
+        Args:
+            text: Text to embed.
+            model: Embedding model to use (defaults to nomic-embed-text).
+            timeout: Request timeout in seconds.
+
+        Returns:
+            List of floats representing the embedding vector.
+
+        Raises:
+            OllamaConnectionError: Network connectivity issues.
+            OllamaTimeoutError: Request timeout.
+            OllamaModelError: Model loading/execution error.
+            OllamaResponseError: Invalid response format.
+        """
+        # Default to a good embedding model
+        embed_model = model or "nomic-embed-text"
+        client = await self._get_client()
+
+        payload = {
+            "model": embed_model,
+            "prompt": text,
+        }
+
+        try:
+            response = await client.post(
+                f"{self.url}/api/embeddings",
+                json=payload,
+                timeout=timeout,
+            )
+
+            if response.status_code == 404:
+                raise OllamaModelError(f"Embedding model not found: {embed_model}")
+
+            if response.status_code != 200:
+                error_text = response.text[:500]
+                raise OllamaModelError(
+                    f"Ollama returned status {response.status_code}: {error_text}"
+                )
+
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                raise OllamaResponseError(f"Invalid JSON response: {e}") from e
+
+            embedding = data.get("embedding", [])
+            if not embedding:
+                raise OllamaResponseError("Empty embedding from Ollama")
+
+            return embedding
+
+        except httpx.ConnectError as e:
+            raise OllamaConnectionError(f"Failed to connect to Ollama: {e}") from e
+        except httpx.TimeoutException as e:
+            raise OllamaTimeoutError(f"Ollama embedding request timed out: {e}") from e
+        except httpx.HTTPError as e:
+            raise OllamaConnectionError(f"HTTP error: {e}") from e
+
+    async def embed_batch(
+        self,
+        texts: list[str],
+        model: str | None = None,
+        timeout: float = 60.0,
+    ) -> list[list[float]]:
+        """
+        Generate embeddings for multiple texts.
+
+        Args:
+            texts: List of texts to embed.
+            model: Embedding model to use.
+            timeout: Request timeout per embedding.
+
+        Returns:
+            List of embedding vectors.
+        """
+        embeddings = []
+        for text in texts:
+            embedding = await self.embed(text, model=model, timeout=timeout)
+            embeddings.append(embedding)
+        return embeddings

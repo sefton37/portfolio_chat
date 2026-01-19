@@ -17,6 +17,7 @@ from portfolio_chat.models.ollama_client import (
     OllamaError,
 )
 from portfolio_chat.utils.logging import audit_logger
+from portfolio_chat.utils.semantic_verify import SemanticVerifier, VerificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -88,17 +89,31 @@ OUTPUT FORMAT (JSON only):
         self,
         client: AsyncOllamaClient | None = None,
         model: str | None = None,
+        enable_semantic_verification: bool = True,
     ) -> None:
         """
         Initialize safety checker.
 
         Args:
             client: Ollama client instance.
-            model: Model to use for classification.
+            model: Model to use for classification (uses verifier model for independent check).
+            enable_semantic_verification: Whether to use embedding-based verification.
         """
         self.client = client or AsyncOllamaClient()
-        self.model = model or MODELS.CLASSIFIER_MODEL
+        # Use verifier model (different from generator) to avoid self-reinforcing bias
+        self.model = model or MODELS.VERIFIER_MODEL
         self._loaded_prompt: str | None = None
+        self.enable_semantic_verification = enable_semantic_verification
+        self._semantic_verifier: SemanticVerifier | None = None
+
+    def _get_semantic_verifier(self) -> SemanticVerifier:
+        """Get or create semantic verifier (lazy initialization)."""
+        if self._semantic_verifier is None:
+            self._semantic_verifier = SemanticVerifier(
+                client=self.client,
+                embedding_model=MODELS.EMBEDDING_MODEL,
+            )
+        return self._semantic_verifier
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for safety checking."""
@@ -136,6 +151,8 @@ Check if the response is safe to send. Output JSON only."""
         """
         Check if a response is safe to send.
 
+        Performs both LLM-based safety check and optional semantic verification.
+
         Args:
             response: The response to check.
             context: The context that was provided.
@@ -157,6 +174,29 @@ Check if the response is safe to send. Output JSON only."""
             )
 
             is_safe = result.get("safe", False)
+            issues: list[SafetyIssue] = []
+
+            if not is_safe:
+                # Parse issues from LLM check
+                issue_strings = result.get("issues", [])
+
+                for issue_str in issue_strings:
+                    try:
+                        issue = SafetyIssue(issue_str.lower())
+                        issues.append(issue)
+                    except ValueError:
+                        logger.warning(f"Unknown safety issue type: {issue_str}")
+
+            # Run semantic verification if enabled and LLM check passed
+            if is_safe and self.enable_semantic_verification and context:
+                semantic_result = await self._run_semantic_verification(response, context)
+                if not semantic_result.verified:
+                    logger.warning(
+                        f"Semantic verification failed: {len(semantic_result.low_similarity_sentences)} "
+                        f"unsupported sentences (overall similarity: {semantic_result.overall_similarity:.2f})"
+                    )
+                    issues.append(SafetyIssue.HALLUCINATION)
+                    is_safe = False
 
             if is_safe:
                 return Layer8Result(
@@ -164,17 +204,6 @@ Check if the response is safe to send. Output JSON only."""
                     passed=True,
                     issues=[SafetyIssue.NONE],
                 )
-
-            # Parse issues
-            issue_strings = result.get("issues", [])
-            issues: list[SafetyIssue] = []
-
-            for issue_str in issue_strings:
-                try:
-                    issue = SafetyIssue(issue_str.lower())
-                    issues.append(issue)
-                except ValueError:
-                    logger.warning(f"Unknown safety issue type: {issue_str}")
 
             if not issues:
                 issues = [SafetyIssue.NONE]
@@ -226,6 +255,34 @@ Check if the response is safe to send. Output JSON only."""
                 passed=False,
                 issues=[SafetyIssue.NONE],
                 error_message="Safety check failed",
+            )
+
+    async def _run_semantic_verification(
+        self,
+        response: str,
+        context: str,
+    ) -> VerificationResult:
+        """
+        Run semantic verification to detect potential hallucinations.
+
+        Args:
+            response: The response to verify.
+            context: The context to verify against.
+
+        Returns:
+            VerificationResult from semantic verifier.
+        """
+        try:
+            verifier = self._get_semantic_verifier()
+            return await verifier.verify(response, context)
+        except Exception as e:
+            logger.warning(f"Semantic verification error: {e}")
+            # Return a passing result on error - don't block legitimate responses
+            return VerificationResult(
+                verified=True,
+                overall_similarity=0.0,
+                low_similarity_sentences=[],
+                error=str(e),
             )
 
     @staticmethod

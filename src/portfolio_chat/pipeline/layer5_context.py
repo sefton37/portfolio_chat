@@ -147,7 +147,23 @@ class Layer5Status:
     SUCCESS = "success"
     PARTIAL = "partial"  # Some files missing
     NO_CONTEXT = "no_context"
+    INSUFFICIENT = "insufficient"  # Context exists but is placeholder/sparse
     ERROR = "error"
+
+
+# Minimum useful context threshold (chars) - below this, content is likely placeholder
+MIN_USEFUL_CONTEXT_LENGTH = 200
+
+# Patterns that indicate placeholder content (should not be used for generation)
+PLACEHOLDER_PATTERNS = [
+    "placeholder",
+    "todo:",
+    "coming soon",
+    "to be added",
+    "[insert",
+    "lorem ipsum",
+    "example content",
+]
 
 
 @dataclass
@@ -160,6 +176,8 @@ class Layer5Result:
     sources_loaded: list[str]
     sources_missing: list[str]
     total_length: int
+    is_placeholder: bool = False  # True if content appears to be placeholder
+    context_quality: float = 1.0  # 0.0-1.0 score of context usefulness
 
 
 class Layer5ContextRetriever:
@@ -225,6 +243,50 @@ class Layer5ContextRetriever:
             logger.error(f"Error reading context file {file_path}: {e}")
             return None
 
+    def _is_placeholder_content(self, content: str) -> bool:
+        """Check if content appears to be placeholder/stub content."""
+        content_lower = content.lower()
+        for pattern in PLACEHOLDER_PATTERNS:
+            if pattern in content_lower:
+                return True
+        return False
+
+    def _calculate_context_quality(
+        self,
+        context: str,
+        sources_loaded: int,
+        sources_missing: int,
+        has_placeholder: bool,
+    ) -> float:
+        """
+        Calculate a quality score for the retrieved context.
+
+        Returns a score from 0.0 to 1.0:
+        - 1.0: Full, substantial context with no issues
+        - 0.5-0.9: Partial context or some missing sources
+        - 0.1-0.4: Sparse or mostly placeholder
+        - 0.0: No usable context
+        """
+        if not context or len(context) < MIN_USEFUL_CONTEXT_LENGTH:
+            return 0.0
+
+        if has_placeholder:
+            return 0.2  # Placeholder content is low quality
+
+        # Base score from content length (logarithmic scale)
+        import math
+        length_score = min(1.0, math.log10(len(context) + 1) / 4)  # ~1.0 at 10k chars
+
+        # Penalty for missing sources
+        total_sources = sources_loaded + sources_missing
+        if total_sources > 0:
+            completeness = sources_loaded / total_sources
+        else:
+            completeness = 0.0
+
+        # Combined score
+        return round(length_score * 0.6 + completeness * 0.4, 2)
+
     def retrieve(
         self,
         domain: Domain,
@@ -282,9 +344,22 @@ class Layer5ContextRetriever:
         # Build final context
         context = "\n\n---\n\n".join(context_parts)
 
+        # Check for placeholder content
+        has_placeholder = self._is_placeholder_content(context)
+
+        # Calculate context quality
+        context_quality = self._calculate_context_quality(
+            context=context,
+            sources_loaded=len(sources_loaded),
+            sources_missing=len(sources_missing),
+            has_placeholder=has_placeholder,
+        )
+
         # Determine status
         if not sources_loaded:
             status = Layer5Status.NO_CONTEXT
+        elif has_placeholder or len(context) < MIN_USEFUL_CONTEXT_LENGTH:
+            status = Layer5Status.INSUFFICIENT
         elif sources_missing:
             status = Layer5Status.PARTIAL
         else:
@@ -292,11 +367,13 @@ class Layer5ContextRetriever:
 
         return Layer5Result(
             status=status,
-            passed=True,  # Always passes - empty context is handled by generator
+            passed=True,  # Always passes - handling done by orchestrator
             context=context,
             sources_loaded=sources_loaded,
             sources_missing=sources_missing,
             total_length=len(context),
+            is_placeholder=has_placeholder,
+            context_quality=context_quality,
         )
 
     def get_available_sources(self) -> dict[str, list[str]]:

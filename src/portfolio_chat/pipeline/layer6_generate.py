@@ -119,18 +119,21 @@ DOMAIN: {domain}"""
         message: str,
         context: str,
         conversation_history: list[dict[str, str]] | None = None,
+        sources: list[str] | None = None,
     ) -> str:
         """
-        Format the complete user message with spotlighting.
+        Format the complete user message with spotlighting and source attribution.
 
         Uses clear delimiters to separate trusted (context) from
-        untrusted (user message) content.
+        untrusted (user message) content. Includes source labels for citation.
         """
         parts = []
 
-        # Add context (trusted)
+        # Add context (trusted) with source attribution
         if context:
-            parts.append("CONTEXT ABOUT KEL:")
+            parts.append("CONTEXT ABOUT KEL (cite sources when using this information):")
+            if sources:
+                parts.append(f"Available sources: {', '.join(sources)}")
             parts.append("```")
             parts.append(context)
             parts.append("```")
@@ -154,7 +157,12 @@ DOMAIN: {domain}"""
         parts.append(message)
         parts.append(self.SPOTLIGHT_END)
         parts.append("")
-        parts.append("Please respond to the user's question based on the context provided.")
+        parts.append(
+            "Respond based ONLY on the context provided. "
+            "When stating facts from context, briefly indicate which section it comes from "
+            "(e.g., 'According to his resume...' or 'His skills include...'). "
+            "If the context doesn't contain relevant information, say so transparently."
+        )
 
         return "\n".join(parts)
 
@@ -164,6 +172,7 @@ DOMAIN: {domain}"""
         domain: Domain,
         context: str,
         conversation_history: list[dict[str, str]] | None = None,
+        sources: list[str] | None = None,
     ) -> Layer6Result:
         """
         Generate a response.
@@ -189,7 +198,7 @@ DOMAIN: {domain}"""
         try:
             system_prompt = self._get_system_prompt(domain)
             user_message = self._format_user_message(
-                message, context, conversation_history
+                message, context, conversation_history, sources
             )
 
             response = await self.client.chat_text(

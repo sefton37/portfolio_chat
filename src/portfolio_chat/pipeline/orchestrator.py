@@ -282,6 +282,43 @@ class PipelineOrchestrator:
                 context_length=len(l5_result.context) if l5_result.context else 0,
             )
 
+            # Check for insufficient context - refuse to generate to prevent hallucination
+            # Criteria:
+            # 1. Explicit INSUFFICIENT status from L5
+            # 2. Content detected as placeholder
+            # 3. Context quality score below minimum threshold (0.4)
+            from portfolio_chat.pipeline.layer5_context import Layer5Status
+
+            MIN_CONTEXT_QUALITY = 0.4  # Minimum quality score to proceed with generation
+
+            context_insufficient = (
+                l5_result.status == Layer5Status.INSUFFICIENT
+                or l5_result.is_placeholder
+                or l5_result.context_quality < MIN_CONTEXT_QUALITY
+            )
+
+            if context_insufficient:
+                logger.warning(
+                    f"Insufficient context for domain {l4_result.domain.value}: "
+                    f"status={l5_result.status}, quality={l5_result.context_quality}, "
+                    f"placeholder={l5_result.is_placeholder}"
+                )
+                # Return a transparent "no information" response
+                no_info_response = (
+                    f"I don't have detailed information about that topic in my current knowledge base. "
+                    f"The content for {l4_result.domain.value} is still being developed. "
+                    f"Is there something else about Kel's work I can help you with?"
+                )
+                return self.layer9.deliver_success(
+                    response=no_info_response,
+                    domain=l4_result.domain,
+                    request_id=request_id,
+                    conversation_id=conv_id,
+                    start_time=start_time,
+                    ip_hash=ip_hash,
+                    layer_timings=metrics.layer_timings,
+                )
+
             # ===== LAYER 6: Response Generation =====
             l6_start = time.time()
             l6_result = await self.layer6.generate(
@@ -289,6 +326,7 @@ class PipelineOrchestrator:
                 domain=l4_result.domain,
                 context=l5_result.context,
                 conversation_history=conversation_history,
+                sources=l5_result.sources_loaded,
             )
             metrics.layer_timings["L6"] = time.time() - l6_start
 

@@ -81,21 +81,29 @@ def get_tools_prompt_section() -> str:
     tools_desc = "\n\n".join(tool.to_prompt_format() for tool in AVAILABLE_TOOLS)
 
     return f"""
-## AVAILABLE TOOLS
+## TOOLS - READ CAREFULLY
 
-You have access to the following tools. To use a tool, output a JSON block in this exact format:
+When a visitor wants to contact Kellogg or leave a message, you MUST output this exact block:
 
 ```tool_call
-{{"tool": "tool_name", "parameters": {{"param1": "value1", "param2": "value2"}}}}
+{{"tool": "save_message_for_kellogg", "parameters": {{"message": "MESSAGE_HERE", "visitor_name": "NAME_HERE", "visitor_email": "EMAIL_HERE"}}}}
 ```
 
-IMPORTANT RULES FOR TOOL USE:
-1. Only use tools when the visitor explicitly requests the action (e.g., "I want to leave a message for Kellogg")
-2. Before calling save_message_for_kellogg, confirm the exact message content with the visitor
-3. After a tool call, wait for the result before responding to the visitor
-4. Never fabricate tool results - only report what the tool actually returns
+This is the ONLY way to actually save messages. If you don't output this block, the message is NOT saved.
 
-Available tools:
+WHEN TO USE IT:
+- Visitor says "send", "yes", "please send", "send it", "submit", "forward", or similar confirmation
+- Visitor asks to leave a message, contact Kellogg, or provide feedback
+- DO NOT keep asking for confirmation - if they said yes, USE THE TOOL
+
+EXAMPLE:
+User: "Tell Kellogg I want to hire him. I'm John at john@test.com. Send it."
+You respond with:
+I'll save that message for Kellogg now.
+
+```tool_call
+{{"tool": "save_message_for_kellogg", "parameters": {{"message": "I want to hire Kellogg", "visitor_name": "John", "visitor_email": "john@test.com"}}}}
+```
 
 {tools_desc}
 """

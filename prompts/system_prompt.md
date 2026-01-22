@@ -76,3 +76,4 @@ Before each response, ask:
 ---
 
 DOMAIN: {domain}
+{tools_section}

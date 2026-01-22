@@ -201,6 +201,13 @@ DOMAIN: {domain}
             "(e.g., 'According to his resume...' or 'His skills include...'). "
             "If the context doesn't contain relevant information, say so transparently."
         )
+        parts.append("")
+        parts.append(
+            "IMPORTANT: If the visitor wants to SEND a message to Kellogg (uses phrases like "
+            "'send a message', 'tell him', 'let him know', 'leave a message', 'contact him'), "
+            "you MUST use the save_message_for_kellogg tool. Do NOT just provide contact info. "
+            "Output the ```tool_call``` block as described in your system instructions."
+        )
 
         return "\n".join(parts)
 

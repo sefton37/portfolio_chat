@@ -93,11 +93,11 @@ class ToolExecutor:
             try:
                 data = json.loads(json_str)
 
-                if "tool" not in data:
-                    logger.warning(f"Tool call missing 'tool' field: {json_str}")
+                # Accept both "tool" and "name" keys (LLMs sometimes use "name")
+                tool_name = data.get("tool") or data.get("name")
+                if not tool_name:
+                    logger.warning(f"Tool call missing 'tool' or 'name' field: {json_str}")
                     continue
-
-                tool_name = data["tool"]
                 parameters = data.get("parameters", {})
 
                 # Validate tool exists

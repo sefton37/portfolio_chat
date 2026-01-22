@@ -112,6 +112,23 @@ class ConversationLimits:
 
 
 @dataclass(frozen=True)
+class PipelineConfig:
+    """Pipeline optimization settings."""
+
+    # Use combined L2+L3 classifier (single LLM call instead of two)
+    USE_COMBINED_CLASSIFIER: bool = _env_str("USE_COMBINED_CLASSIFIER", "true").lower() == "true"
+
+    # Skip L7 revision layer (saves ~3-4s latency)
+    SKIP_REVISION: bool = _env_str("SKIP_REVISION", "true").lower() == "true"
+
+    # Use pattern matching for L8 instead of LLM (saves ~2-3s latency)
+    USE_FAST_SAFETY_CHECK: bool = _env_str("USE_FAST_SAFETY_CHECK", "true").lower() == "true"
+
+    # Enable streaming responses (progressive output)
+    ENABLE_STREAMING: bool = _env_str("ENABLE_STREAMING", "true").lower() == "true"
+
+
+@dataclass(frozen=True)
 class ServerConfig:
     """Server configuration."""
 
@@ -169,6 +186,7 @@ SECURITY = SecurityLimits()
 RATE_LIMITS = RateLimits()
 MODELS = ModelConfig()
 CONVERSATION = ConversationLimits()
+PIPELINE = PipelineConfig()
 SERVER = ServerConfig()
 PATHS = PathConfig()
 ANALYTICS = AnalyticsConfig()
@@ -182,6 +200,7 @@ def get_all_config() -> dict[str, object]:
         "rate_limits": RATE_LIMITS,
         "models": MODELS,
         "conversation": CONVERSATION,
+        "pipeline": PIPELINE,
         "server": SERVER,
         "paths": {
             "base_dir": str(PATHS.BASE_DIR),

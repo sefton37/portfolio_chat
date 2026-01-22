@@ -28,10 +28,12 @@ from prometheus_client import (
 )
 from pydantic import BaseModel, Field
 
+from fastapi.responses import StreamingResponse
+
 from portfolio_chat.admin.router import admin_router
-from portfolio_chat.config import ANALYTICS, SECURITY, SERVER
+from portfolio_chat.config import ANALYTICS, PIPELINE, SECURITY, SERVER
 from portfolio_chat.contact.storage import ContactStorage
-from portfolio_chat.pipeline.orchestrator import PipelineOrchestrator
+from portfolio_chat.pipeline.orchestrator_fast import FastPipelineOrchestrator
 from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
 
 logger = logging.getLogger(__name__)
@@ -187,7 +189,7 @@ class ContactResponseModel(BaseModel):
 
 
 # Global instances
-orchestrator: PipelineOrchestrator | None = None
+orchestrator: FastPipelineOrchestrator | None = None
 contact_storage: ContactStorage | None = None
 
 
@@ -198,9 +200,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     # Startup
     setup_logging(level=SERVER.LOG_LEVEL)
-    logger.info("Starting Portfolio Chat server...")
+    logger.info("Starting Portfolio Chat server (FAST mode)...")
+    logger.info(f"Pipeline config: combined_classifier={PIPELINE.USE_COMBINED_CLASSIFIER}, "
+                f"skip_revision={PIPELINE.SKIP_REVISION}, fast_safety={PIPELINE.USE_FAST_SAFETY_CHECK}")
 
-    orchestrator = PipelineOrchestrator()
+    orchestrator = FastPipelineOrchestrator()
     contact_storage = ContactStorage()
 
     # Check Ollama connection
@@ -356,6 +360,41 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseModel:
             response_time_ms=duration * 1000,
             conversation_id="",
         ),
+    )
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
+    """
+    Streaming chat endpoint.
+
+    Processes a message and streams the response as it's generated.
+    Uses Server-Sent Events format.
+    """
+    global orchestrator
+
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    client_ip = get_client_ip(request)
+
+    async def generate():
+        async for chunk in orchestrator.process_message_stream(
+            message=body.message,
+            conversation_id=body.conversation_id,
+            client_ip=client_ip,
+        ):
+            # SSE format
+            yield f"data: {chunk}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )
 
 

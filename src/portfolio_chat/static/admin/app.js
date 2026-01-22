@@ -14,7 +14,6 @@ const elements = {
     endDate: document.getElementById('end-date'),
     applyFilter: document.getElementById('apply-filter'),
     resetFilter: document.getElementById('reset-filter'),
-    granularity: document.getElementById('granularity'),
     conversationsList: document.getElementById('conversations-list'),
     domainsList: document.getElementById('domains-list'),
     prevPage: document.getElementById('prev-page'),
@@ -41,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event listeners
     elements.applyFilter.addEventListener('click', loadDashboard);
     elements.resetFilter.addEventListener('click', resetFilters);
-    elements.granularity.addEventListener('change', loadTimeseries);
     elements.prevPage.addEventListener('click', () => changePage(-1));
     elements.nextPage.addEventListener('click', () => changePage(1));
     elements.closeModal.addEventListener('click', closeModal);
@@ -95,7 +93,7 @@ async function fetchStats() {
 
 async function fetchTimeseries() {
     const params = getDateParams();
-    params.set('granularity', elements.granularity.value);
+    params.set('granularity', 'day');
     const response = await fetch(`/admin/analytics/timeseries?${params}`);
     if (!response.ok) throw new Error('Failed to fetch timeseries');
     return response.json();
@@ -189,37 +187,36 @@ function renderChart(data) {
         activityChart.destroy();
     }
 
-    const labels = data.map(d => {
-        const date = new Date(d.timestamp);
-        const granularity = elements.granularity.value;
-        if (granularity === 'hour') {
-            return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit' });
-        } else if (granularity === 'week') {
-            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        }
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    });
+    // Convert data to scatter plot format with date on x-axis
+    const conversationPoints = data.map(d => ({
+        x: d.timestamp.split('T')[0],  // Just the date part
+        y: d.conversations
+    }));
+
+    const messagePoints = data.map(d => ({
+        x: d.timestamp.split('T')[0],
+        y: d.messages
+    }));
 
     activityChart = new Chart(ctx, {
-        type: 'line',
+        type: 'scatter',
         data: {
-            labels: labels,
             datasets: [
                 {
                     label: 'Conversations',
-                    data: data.map(d => d.conversations),
+                    data: conversationPoints,
                     borderColor: '#e94560',
-                    backgroundColor: 'rgba(233, 69, 96, 0.1)',
-                    fill: true,
-                    tension: 0.3,
+                    backgroundColor: '#e94560',
+                    pointRadius: 8,
+                    pointHoverRadius: 10,
                 },
                 {
                     label: 'Messages',
-                    data: data.map(d => d.messages),
+                    data: messagePoints,
                     borderColor: '#4ade80',
-                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                    fill: true,
-                    tension: 0.3,
+                    backgroundColor: '#4ade80',
+                    pointRadius: 8,
+                    pointHoverRadius: 10,
                 },
             ],
         },
@@ -232,15 +229,36 @@ function renderChart(data) {
                         color: '#eaeaea',
                     },
                 },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}`;
+                        }
+                    }
+                }
             },
             scales: {
                 x: {
+                    type: 'category',
+                    title: {
+                        display: true,
+                        text: 'Date',
+                        color: '#eaeaea',
+                    },
                     ticks: { color: '#a0a0a0' },
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { color: '#a0a0a0' },
+                    title: {
+                        display: true,
+                        text: 'Count',
+                        color: '#eaeaea',
+                    },
+                    ticks: {
+                        color: '#a0a0a0',
+                        stepSize: 1,
+                    },
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
                 },
             },

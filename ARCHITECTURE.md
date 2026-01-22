@@ -130,8 +130,9 @@ The security and architecture of this system itself demonstrates Kel's technical
 │    - Professional tone maintained                                       │
 │    - No hallucinated claims about Kel                                   │
 │    - No private information exposure                                    │
+│  • Semantic verification: embedding-based hallucination detection       │
 │  • If fails: Return canned "let me rephrase" response                   │
-│  MODEL: Small classifier (same as Layer 2)                              │
+│  MODEL: Small classifier (different from generator to avoid bias)       │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -310,8 +311,8 @@ OUTPUT FORMAT (JSON only):
 
 ```typescript
 interface ChatRequest {
-  message: string;        // User's message (max 2000 chars)
-  conversation_id?: string; // Optional, for multi-turn (future)
+  message: string;          // User's message (max 2000 chars)
+  conversation_id?: string; // Optional, for multi-turn conversations
 }
 ```
 
@@ -331,9 +332,26 @@ interface ChatResponse {
   metadata: {
     response_time_ms: number;
     request_id: string;
+    conversation_id: string;    // For continuing conversation
+    layer_timings_ms?: object;  // Per-layer timing breakdown
   };
 }
 ```
+
+### Tool System
+
+Layer 6 supports MCP-style tool calling. When the AI needs to perform an action:
+
+```
+Tool call format (in AI response):
+\`\`\`tool_call
+{"tool": "save_message_for_kellogg", "message": "...", "visitor_name": "..."}
+\`\`\`
+```
+
+Available tools:
+- `save_message_for_kellogg`: Save a visitor's message for Kellogg to read later
+  - Parameters: `message` (required), `visitor_name` (optional), `visitor_email` (optional)
 
 ### Error Codes
 
@@ -480,15 +498,29 @@ LOG_SCHEMA = {
 
 ---
 
+## Implemented Features
+
+### Multi-Turn Conversations
+Conversation history is supported with the following safeguards:
+- **Turn limit**: Maximum 10 turns per conversation (configurable)
+- **TTL expiration**: Conversations expire after 30 minutes of inactivity
+- **Token limit**: Maximum 4000 tokens of history sent to models
+- **Per-message validation**: Each message still goes through full L0-L2 security checks
+
+### Tool Calling (Contact System)
+MCP-style tool calling enables visitors to leave messages for Kellogg:
+- **Tool**: `save_message_for_kellogg` - saves visitor messages to secure JSON storage
+- **Storage**: Files saved with 0o600 permissions (owner read/write only)
+- **Privacy**: IP addresses are hashed, not stored raw
+- **Loop limit**: Maximum 3 tool execution iterations to prevent infinite loops
+
 ## Open Questions
 
-1. **Multi-turn conversations**: Should we support conversation history? This adds attack surface (conversation poisoning) but improves user experience.
+1. **Caching**: Can we cache responses for common questions? This improves performance but reduces personalization.
 
-2. **Caching**: Can we cache responses for common questions? This improves performance but reduces personalization.
+2. **Fallback models**: If primary model is unavailable, should we fall back to a smaller model with degraded quality, or fail completely?
 
-3. **Fallback models**: If primary model is unavailable, should we fall back to a smaller model with degraded quality, or fail completely?
-
-4. **Voice distillation**: How do we integrate the "style distillation" process for Kel's personality without exposing biographical details?
+3. **Voice distillation**: How do we integrate the "style distillation" process for Kel's personality without exposing biographical details?
 
 ---
 

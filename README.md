@@ -10,7 +10,9 @@ This system powers the AI chat feature on Kellogg Brengel's portfolio website. I
 - 9-layer security pipeline
 - Cheap models for routing/validation, capable models for generation
 - Zero trust architecture (every layer assumes previous layers failed)
-- Stateless design (no conversation history attack surface)
+- Multi-turn conversation support (with TTL expiration and turn limits)
+- Tool calling for contact messages (MCP-style)
+- IP spoofing prevention via trusted proxy validation
 - Cloudflare Tunnel integration (no open ports)
 
 ## Architecture
@@ -29,7 +31,6 @@ See [SECURITY.md](./SECURITY.md) for threat model and defenses.
 ### Software
 - Python 3.11+
 - Ollama (for local LLM inference)
-- Redis (optional, for rate limiting)
 - cloudflared (for tunnel to Cloudflare)
 
 ## Quick Start
@@ -107,13 +108,21 @@ portfolio_chat/
 │       │   ├── __init__.py
 │       │   ├── ollama_client.py
 │       │   └── model_config.py
-│       ├── context/
+│       ├── conversation/
 │       │   ├── __init__.py
-│       │   └── loader.py
+│       │   └── manager.py      # Multi-turn conversation handling
+│       ├── contact/
+│       │   ├── __init__.py
+│       │   └── storage.py      # Contact message storage
+│       ├── tools/
+│       │   ├── __init__.py
+│       │   ├── definitions.py  # Tool schemas
+│       │   └── executor.py     # Tool execution
 │       └── utils/
 │           ├── __init__.py
 │           ├── logging.py
-│           └── rate_limit.py
+│           ├── rate_limit.py
+│           └── semantic_verify.py  # Hallucination detection
 ├── context/                     # Domain context documents
 │   ├── professional/
 │   ├── projects/
@@ -128,7 +137,8 @@ portfolio_chat/
 ├── tests/
 │   ├── unit/
 │   ├── integration/
-│   └── security/
+│   ├── security/
+│   └── e2e/
 ├── ARCHITECTURE.md
 ├── SECURITY.md
 ├── README.md
@@ -186,7 +196,7 @@ Environment variables (`.env`):
 ```bash
 # Server
 CHAT_API_PORT=8000
-CHAT_API_HOST=127.0.0.1
+CHAT_API_HOST=127.0.0.1  # Default: localhost for safety
 
 # Ollama
 OLLAMA_HOST=http://localhost:11434
@@ -195,19 +205,28 @@ OLLAMA_HOST=http://localhost:11434
 CLASSIFIER_MODEL=qwen2.5:0.5b
 ROUTER_MODEL=llama3.2:1b
 GENERATOR_MODEL=mistral:7b
+VERIFIER_MODEL=qwen2.5:0.5b
+EMBEDDING_MODEL=nomic-embed-text
 
 # Rate Limiting
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_PER_MINUTE=10
-RATE_LIMIT_PER_HOUR=100
+RATE_LIMIT_PER_IP_PER_MINUTE=10
+RATE_LIMIT_PER_IP_PER_HOUR=100
+RATE_LIMIT_GLOBAL_PER_MINUTE=1000
 
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=/var/log/portfolio_chat/app.log
+# Conversation
+MAX_TURNS=10                    # Max conversation turns
+CONVERSATION_TTL_SECONDS=1800   # 30 minute timeout
+MAX_HISTORY_TOKENS=4000         # Max tokens in history
 
 # Security
 MAX_INPUT_LENGTH=2000
+MAX_REQUEST_SIZE=8192
 REQUEST_TIMEOUT_SECONDS=30
+TRUSTED_PROXIES=                # Comma-separated IPs (e.g., Cloudflare)
+METRICS_ENABLED=false           # Set true to expose /metrics
+
+# Logging
+LOG_LEVEL=INFO
 ```
 
 ## Deployment

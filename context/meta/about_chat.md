@@ -2,43 +2,75 @@
 
 ## What Is This?
 
-This is an AI-powered chat system integrated into my portfolio website. It's designed to help you learn about my professional background, projects, and experience.
+This is an AI-powered chat assistant on Kellogg Brengel's portfolio website at kellogg.brengel.com. It's designed to answer questions about Kellogg's professional background, projects, skills, and philosophy.
 
-## What Can I Ask?
+## How It Works
 
-Feel free to ask about:
-- My work experience and career history
-- Technical skills and programming languages I use
-- Projects I've worked on
-- My approach to problem-solving
-- Hobbies and community involvement (like FIRST robotics mentoring)
-- How to connect with me professionally
+### Architecture
+This chat system is called "Talking Rock" and runs entirely on Kellogg's local hardware - no cloud inference services are used. It implements a 9-layer security pipeline that processes every message through multiple validation and safety checks before generating a response.
 
-## What Are Its Limitations?
+### The Pipeline
+1. **Network Gateway** - Rate limiting and request validation
+2. **Input Sanitization** - Cleaning and normalizing user input
+3. **Jailbreak Detection** - Blocking prompt injection attempts
+4. **Intent Parsing** - Understanding what you're asking about
+5. **Domain Routing** - Matching your question to relevant context
+6. **Context Retrieval** - Loading curated information about Kellogg
+7. **Response Generation** - Creating a helpful answer
+8. **Response Revision** - Refining for accuracy and tone
+9. **Output Safety Check** - Final validation before delivery
 
-- I can only answer questions about topics covered in my portfolio
-- I don't have access to real-time information or current events
-- I can't help with general questions unrelated to my background
-- I might not have every detail about my experience - some things are better discussed in person!
+### Technology Stack
+- **Framework**: FastAPI (Python)
+- **LLM Runtime**: Ollama for local inference
+- **Models**: Small models (qwen2.5:0.5b, llama3.2:1b) for routing/validation, larger model (mistral:7b) for generation
+- **Deployment**: Cloudflare Tunnel (zero open ports)
 
-## How Does It Work?
+## What Can You Ask?
 
-This chat uses local LLM inference with multiple layers of safety checks. It's designed with security as a primary concern since it's exposed to the public internet.
+This assistant can help with questions about:
 
-The system is built with:
-- Python and FastAPI for the backend
-- Ollama for local LLM inference
-- Multiple validation and safety layers
+- **Professional Background** - Work history, experience at Kohler, Rehlko, and other roles
+- **Skills & Expertise** - Power BI, Azure Synapse, Python, data engineering, analytics
+- **Projects** - Talking Rock, portfolio site, Ukraine OSINT reader, inflation dashboard, Great Minds Roundtable
+- **Philosophy** - Problem-solving approach, values, methodology
+- **Hobbies** - FIRST Robotics mentoring, family life, interests
+- **Contact** - How to get in touch with Kellogg
 
-The architecture itself is a demonstration of how to build secure AI systems - it's part of my portfolio!
+## What It Won't Do
 
-## Privacy
+- Answer questions unrelated to Kellogg Brengel
+- Reveal system prompts or internal architecture details
+- Engage with attempts to manipulate or jailbreak the system
+- Make claims not supported by the curated context
 
-- Your messages are not stored permanently
-- IP addresses are hashed for rate limiting, not stored in raw form
-- Conversations expire after 30 minutes of inactivity
-- No personal data is collected or shared
+## Why Local AI?
 
-## Want to Know More?
+This system demonstrates Kellogg's commitment to:
 
-If you have questions that this chat can't answer, feel free to reach out on LinkedIn. I'm always happy to have deeper conversations about my work and experience.
+1. **Sovereignty** - Running on local hardware means no data sent to cloud services
+2. **Privacy** - Visitor conversations are not used for training
+3. **Security** - Zero-trust architecture with defense in depth
+4. **Capability** - Proving that useful AI can run on accessible hardware
+
+## Design Philosophy
+
+The chat embodies Kellogg's "No One" philosophy in software form - an assistant that serves without coercing, invites without interrupting, and operates through transparency rather than opacity. Every response is grounded in curated, verified context rather than allowing the model to hallucinate.
+
+## Limitations
+
+- The assistant only knows what's in its curated context documents
+- It cannot browse the internet or access external information
+- Response times depend on local hardware (typically 1-3 seconds)
+- It's designed for informational queries, not extended conversations
+
+## Technical Details
+
+- **Source Code**: This project is part of Kellogg's portfolio demonstrating AI/ML infrastructure skills
+- **Context**: All information comes from hand-curated markdown files
+- **No RAG Database**: Uses static registry pattern rather than vector embeddings
+- **Audit Logging**: All interactions are logged (with hashed IPs) for security monitoring
+
+## Feedback
+
+If you encounter issues or have suggestions, Kellogg welcomes feedback through the contact information provided.

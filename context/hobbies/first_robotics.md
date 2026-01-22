@@ -32,8 +32,8 @@ Mentoring has helped me improve:
 
 ## Why FIRST Matters to Me
 
-[Personal connection to STEM education and mentoring]
+FIRST robotics mentoring connects directly to my professional values of teaching, empowerment, and building capability in others. Just as I've worked to democratize data and create self-service analytics in my professional roles, mentoring helps democratize STEM education for young people who might not otherwise have access to hands-on robotics experience.
 
----
+The problem-solving methodology I use professionally - intent, contract, decompose, build, verify, integrate - translates directly to helping students approach their robot designs. Watching them internalize this structured approach to complexity is deeply rewarding.
 
-*Note: This is a placeholder. Replace with actual involvement details.*
+It's also a way to give back to the STEM community that shaped my own career path. Every "aha!" moment a student has is a reminder of why this work matters.

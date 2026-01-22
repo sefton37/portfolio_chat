@@ -70,7 +70,7 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
     ContextSource(
         name="portfolio_site",
         display_name="Portfolio Site",
-        file_pattern="projects/portfolio_site.md",
+        file_pattern="projects/portfolio_rag_summary.md",
         domain=Domain.PROJECTS,
         required=False,
         priority=5,
@@ -78,10 +78,34 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
     ContextSource(
         name="talking_rock",
         display_name="Talking Rock",
-        file_pattern="projects/talking_rock.md",
+        file_pattern="projects/talking_rock_rag_summary.md",
         domain=Domain.PROJECTS,
         required=False,
         priority=5,
+    ),
+    ContextSource(
+        name="ukraine_osint",
+        display_name="Ukraine OSINT Reader",
+        file_pattern="projects/ukraine-osint-rag-summary.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=4,
+    ),
+    ContextSource(
+        name="inflation_dashboard",
+        display_name="Inflation Dashboard",
+        file_pattern="projects/inflation-dashboard-rag-summary.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=4,
+    ),
+    ContextSource(
+        name="great_minds",
+        display_name="Great Minds Roundtable",
+        file_pattern="projects/great-minds-summary.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=4,
     ),
     # Hobbies domain
     ContextSource(
@@ -93,9 +117,9 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
         priority=10,
     ),
     ContextSource(
-        name="volunteering",
-        display_name="Volunteering",
-        file_pattern="hobbies/volunteering.md",
+        name="hobbies",
+        display_name="Hobbies & Interests",
+        file_pattern="hobbies/hobbies.md",
         domain=Domain.HOBBIES,
         required=False,
         priority=5,
@@ -103,16 +127,16 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
     # Philosophy domain
     ContextSource(
         name="problem_solving",
-        display_name="Problem Solving",
-        file_pattern="philosophy/problem_solving.md",
+        display_name="Problem Solving Ethos",
+        file_pattern="philosophy/professional_ethos.md",
         domain=Domain.PHILOSOPHY,
         required=True,
         priority=10,
     ),
     ContextSource(
         name="values",
-        display_name="Values",
-        file_pattern="philosophy/values.md",
+        display_name="Professional Philosophy",
+        file_pattern="philosophy/professional_philosophy.md",
         domain=Domain.PHILOSOPHY,
         required=False,
         priority=5,
@@ -126,6 +150,14 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
         required=True,
         priority=10,
     ),
+    ContextSource(
+        name="resume_linkedin",
+        display_name="Resume",
+        file_pattern="professional/resume.md",
+        domain=Domain.LINKEDIN,
+        required=False,
+        priority=5,
+    ),
     # Meta domain
     ContextSource(
         name="about_chat",
@@ -134,6 +166,14 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
         domain=Domain.META,
         required=True,
         priority=10,
+    ),
+    ContextSource(
+        name="portfolio_overview",
+        display_name="Portfolio Overview",
+        file_pattern="meta/portfolio_rag_summary.md",
+        domain=Domain.META,
+        required=False,
+        priority=5,
     ),
 )
 

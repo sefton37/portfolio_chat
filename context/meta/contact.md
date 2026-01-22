@@ -1,32 +1,38 @@
 # Contact Information
 
-## Professional Networking
+## How to Reach Kellogg Brengel
+
+### Email
+kbrengel@brengel.com
 
 ### LinkedIn
-The best way to connect professionally is through LinkedIn:
-[linkedin.com/in/your-profile](https://linkedin.com/in/your-profile)
+[linkedin.com/in/kelloggbrengel](https://www.linkedin.com/in/kelloggbrengel)
 
-Feel free to send a connection request with a note about how you found my portfolio!
+### GitHub
+[github.com/sefton37](https://github.com/sefton37)
 
-## GitHub
-Check out my code and projects:
-[github.com/your-username](https://github.com/your-username)
+### Portfolio Website
+[kellogg.brengel.com](https://kellogg.brengel.com)
 
-## Email
-For professional inquiries: [your-email@domain.com]
+## Location
 
-## What I'm Open To
+Greater Milwaukee, Wisconsin, United States
 
-- Networking and professional connections
-- Interesting technical discussions
-- Collaboration on open source projects
-- Speaking opportunities about [topics]
-- Mentoring discussions
+## Professional Inquiries
+
+Kellogg is open to connecting with people who are:
+- Building teams or products that believe data should have a point of view
+- Working on AI/ML infrastructure and local-first applications
+- Interested in analytics engineering and decision intelligence systems
+- Looking for leadership in data democratization initiatives
+
+## About Connecting
+
+The best way to reach Kellogg is through LinkedIn or email. He values thoughtful, direct communication and is happy to discuss:
+- Professional opportunities in analytics, data engineering, or product leadership
+- Technical collaboration on open-source projects
+- Speaking or writing about data strategy, AI sovereignty, or analytics transformation
 
 ## Response Time
 
-I try to respond to LinkedIn messages and emails within a few business days. If something is urgent, please mention that in your message.
-
----
-
-*Note: This is a placeholder. Replace with your actual contact information.*
+Kellogg typically responds to professional inquiries within a few business days. For urgent matters, LinkedIn messages tend to get faster responses than email.

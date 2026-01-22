@@ -1,5 +1,13 @@
 # Skills & Technical Competencies
 
+## Programming Languages
+
+Kellogg has professional experience with the following programming languages:
+
+- **Python** - Data engineering, automation, API development, ML pipelines, FastAPI web services, async programming, data processing scripts
+- **SQL** - Database querying, data modeling, performance optimization, complex joins and aggregations, stored procedures
+- **DAX (Data Analysis Expressions)** - Power BI measures and calculated columns, time intelligence, advanced filtering, data modeling in tabular models
+
 ## Top Skills
 
 - **Large Language Models (LLM)** - Building and deploying local AI systems, prompt engineering, RAG architectures

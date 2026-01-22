@@ -63,8 +63,8 @@ class SecurityLimits:
     # Timeout constraints
     REQUEST_TIMEOUT: int = _env_int("REQUEST_TIMEOUT", 30, min_val=5)
 
-    # Context constraints
-    MAX_CONTEXT_LENGTH: int = _env_int("MAX_CONTEXT_LENGTH", 8000, min_val=1000)
+    # Context constraints - increased for systems with more resources
+    MAX_CONTEXT_LENGTH: int = _env_int("MAX_CONTEXT_LENGTH", 32000, min_val=1000)
 
 
 @dataclass(frozen=True)

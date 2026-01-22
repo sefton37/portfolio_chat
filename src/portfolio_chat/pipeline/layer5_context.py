@@ -35,20 +35,20 @@ class ContextSource:
 CONTEXT_SOURCES: tuple[ContextSource, ...] = (
     # Professional domain
     ContextSource(
-        name="resume",
-        display_name="Resume",
-        file_pattern="professional/resume.md",
+        name="skills",
+        display_name="Skills",
+        file_pattern="professional/skills.md",
         domain=Domain.PROFESSIONAL,
         required=True,
         priority=10,
     ),
     ContextSource(
-        name="skills",
-        display_name="Skills",
-        file_pattern="professional/skills.md",
+        name="resume",
+        display_name="Resume",
+        file_pattern="professional/resume.md",
         domain=Domain.PROFESSIONAL,
-        required=False,
-        priority=5,
+        required=True,
+        priority=8,
     ),
     ContextSource(
         name="achievements",

@@ -255,19 +255,36 @@ async def request_middleware(request: Request, call_next: Any) -> Any:
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP from request, handling proxies."""
-    # Check for forwarded headers (Cloudflare, nginx, etc.)
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # Take the first IP in the chain
-        return forwarded.split(",")[0].strip()
+    """
+    Extract client IP from request with proxy validation.
 
+    Only trusts X-Forwarded-For/CF-Connecting-IP headers if the immediate
+    peer IP is in the TRUSTED_PROXIES list. This prevents IP spoofing
+    attacks where attackers bypass rate limits by forging headers.
+    """
+    direct_ip = request.client.host if request.client else "unknown"
+
+    # If no trusted proxies configured, always use direct IP
+    if not SERVER.TRUSTED_PROXIES:
+        return direct_ip
+
+    # Only trust forwarded headers if request comes from a trusted proxy
+    if direct_ip not in SERVER.TRUSTED_PROXIES:
+        # Request not from trusted proxy - use direct IP to prevent spoofing
+        return direct_ip
+
+    # Request is from trusted proxy - safe to use forwarded headers
     cf_connecting_ip = request.headers.get("CF-Connecting-IP")
     if cf_connecting_ip:
-        return cf_connecting_ip
+        return cf_connecting_ip.strip()
 
-    # Fall back to direct client
-    return request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # Take the first (client) IP in the chain
+        return forwarded.split(",")[0].strip()
+
+    # Fall back to direct client if no forwarding headers present
+    return direct_ip
 
 
 @app.post("/chat", response_model=ChatResponseModel)
@@ -402,12 +419,25 @@ async def health_check() -> dict[str, Any]:
 
 
 @app.get("/metrics")
-async def metrics() -> PlainTextResponse:
+async def metrics(request: Request) -> PlainTextResponse:
     """
     Prometheus metrics endpoint.
 
     Returns metrics in Prometheus text format.
+    Only enabled if METRICS_ENABLED=true to prevent information disclosure.
     """
+    if not SERVER.METRICS_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Only allow metrics from trusted proxies or localhost
+    client_ip = request.client.host if request.client else "unknown"
+    allowed = (
+        client_ip in ("127.0.0.1", "::1", "localhost")
+        or client_ip in SERVER.TRUSTED_PROXIES
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     return PlainTextResponse(
         content=generate_latest(REGISTRY),
         media_type=CONTENT_TYPE_LATEST,

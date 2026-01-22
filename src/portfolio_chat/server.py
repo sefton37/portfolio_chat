@@ -25,7 +25,7 @@ from prometheus_client import (
 )
 from pydantic import BaseModel, Field
 
-from portfolio_chat.config import SERVER
+from portfolio_chat.config import SECURITY, SERVER
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator import PipelineOrchestrator
 from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
@@ -127,7 +127,7 @@ METRICS = {
 class ChatRequest(BaseModel):
     """Chat request body."""
 
-    message: str = Field(..., min_length=1, max_length=5000)
+    message: str = Field(..., min_length=1, max_length=SECURITY.MAX_INPUT_LENGTH)
     conversation_id: str | None = Field(None, max_length=100)
 
 
@@ -167,10 +167,10 @@ class ChatResponseModel(BaseModel):
 class ContactRequest(BaseModel):
     """Contact form request body."""
 
-    message: str = Field(..., min_length=1, max_length=5000)
+    message: str = Field(..., min_length=1, max_length=SECURITY.MAX_INPUT_LENGTH)
     sender_name: str | None = Field(None, max_length=100)
     sender_email: str | None = Field(None, max_length=254)
-    context: str | None = Field(None, max_length=2000)  # Conversation summary
+    context: str | None = Field(None, max_length=SECURITY.MAX_INPUT_LENGTH)  # Conversation summary
     conversation_id: str | None = Field(None, max_length=100)
 
 
@@ -225,13 +225,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware - origins configured via CORS_ORIGINS environment variable
+# Production default: https://kellogg.brengel.com
+# Development: set CORS_ORIGINS=http://localhost:3000,http://localhost:4321
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
+    allow_origins=list(SERVER.CORS_ORIGINS),
+    allow_credentials=False,  # Not using cookies/sessions
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 

@@ -3,6 +3,7 @@ Pipeline Orchestrator
 
 Coordinates all 9 layers of the zero-trust inference pipeline.
 Handles layer-by-layer execution with early exits and error handling.
+Supports tool calling for actions like saving messages.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.conversation.manager import ConversationManager, MessageRole
 from portfolio_chat.models.ollama_client import AsyncOllamaClient
 from portfolio_chat.pipeline.layer0_network import Layer0NetworkGateway, Layer0Status
@@ -19,10 +21,11 @@ from portfolio_chat.pipeline.layer2_jailbreak import Layer2JailbreakDetector
 from portfolio_chat.pipeline.layer3_intent import Layer3IntentParser
 from portfolio_chat.pipeline.layer4_route import Domain, Layer4Router
 from portfolio_chat.pipeline.layer5_context import Layer5ContextRetriever
-from portfolio_chat.pipeline.layer6_generate import Layer6Generator
+from portfolio_chat.pipeline.layer6_generate import Layer6Generator, Layer6Status
 from portfolio_chat.pipeline.layer7_revise import Layer7Reviser
 from portfolio_chat.pipeline.layer8_safety import Layer8SafetyChecker
 from portfolio_chat.pipeline.layer9_deliver import ChatResponse, Layer9Deliverer
+from portfolio_chat.tools.executor import ToolExecutor
 from portfolio_chat.utils.logging import audit_logger, generate_request_id, hash_ip, request_id_var
 from portfolio_chat.utils.rate_limit import InMemoryRateLimiter
 
@@ -56,11 +59,15 @@ class PipelineOrchestrator:
     Handles errors gracefully with safe fallback responses.
     """
 
+    # Maximum tool call iterations to prevent infinite loops
+    MAX_TOOL_ITERATIONS = 3
+
     def __init__(
         self,
         rate_limiter: InMemoryRateLimiter | None = None,
         conversation_manager: ConversationManager | None = None,
         ollama_client: AsyncOllamaClient | None = None,
+        contact_storage: ContactStorage | None = None,
     ) -> None:
         """
         Initialize orchestrator with all layer components.
@@ -69,11 +76,13 @@ class PipelineOrchestrator:
             rate_limiter: Shared rate limiter instance.
             conversation_manager: Shared conversation manager.
             ollama_client: Shared Ollama client.
+            contact_storage: Storage for contact messages (tool support).
         """
         # Shared components
         self.rate_limiter = rate_limiter or InMemoryRateLimiter()
         self.conversation_manager = conversation_manager or ConversationManager()
         self.ollama_client = ollama_client or AsyncOllamaClient()
+        self.contact_storage = contact_storage or ContactStorage()
 
         # Initialize all layers
         self.layer0 = Layer0NetworkGateway(rate_limiter=self.rate_limiter)
@@ -82,7 +91,7 @@ class PipelineOrchestrator:
         self.layer3 = Layer3IntentParser(client=self.ollama_client)
         self.layer4 = Layer4Router()
         self.layer5 = Layer5ContextRetriever()
-        self.layer6 = Layer6Generator(client=self.ollama_client)
+        self.layer6 = Layer6Generator(client=self.ollama_client, enable_tools=True)
         self.layer7 = Layer7Reviser(client=self.ollama_client)
         self.layer8 = Layer8SafetyChecker(client=self.ollama_client)
         self.layer9 = Layer9Deliverer()
@@ -319,8 +328,18 @@ class PipelineOrchestrator:
                     layer_timings=metrics.layer_timings,
                 )
 
-            # ===== LAYER 6: Response Generation =====
+            # ===== LAYER 6: Response Generation (with Tool Support) =====
             l6_start = time.time()
+
+            # Create tool executor with current context
+            tool_executor = ToolExecutor(
+                contact_storage=self.contact_storage,
+                conversation_id=conv_id,
+                client_ip_hash=ip_hash,
+            )
+            self.layer6.set_tool_executor(tool_executor)
+
+            # Initial generation
             l6_result = await self.layer6.generate(
                 message=sanitized_message,
                 domain=l4_result.domain,
@@ -328,6 +347,44 @@ class PipelineOrchestrator:
                 conversation_history=conversation_history,
                 sources=l5_result.sources_loaded,
             )
+
+            # Handle tool calls with iteration limit
+            tool_iteration = 0
+            all_tool_results = []
+
+            while (
+                l6_result.status == Layer6Status.TOOL_CALL
+                and l6_result.tool_calls
+                and tool_iteration < self.MAX_TOOL_ITERATIONS
+            ):
+                tool_iteration += 1
+                logger.info(
+                    f"Executing {len(l6_result.tool_calls)} tool call(s), iteration {tool_iteration}"
+                )
+
+                # Execute all tool calls
+                tool_results = await tool_executor.execute_all(l6_result.tool_calls)
+                all_tool_results.extend(tool_results)
+
+                # Log tool execution
+                for result in tool_results:
+                    audit_logger.log_tool_execution(
+                        request_id=request_id,
+                        tool_name=result.tool_name,
+                        success=result.success,
+                        result_summary=result.result[:200],
+                    )
+
+                # Generate follow-up response with tool results
+                l6_result = await self.layer6.generate(
+                    message=sanitized_message,
+                    domain=l4_result.domain,
+                    context=l5_result.context,
+                    conversation_history=conversation_history,
+                    sources=l5_result.sources_loaded,
+                    tool_results=tool_results,
+                )
+
             metrics.layer_timings["L6"] = time.time() - l6_start
 
             if not l6_result.passed or not l6_result.response:

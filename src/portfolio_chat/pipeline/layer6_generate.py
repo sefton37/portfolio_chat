@@ -3,12 +3,13 @@ Layer 6: Response Generation
 
 Main response generation using the primary LLM model.
 Uses spotlighting technique to separate trusted and untrusted content.
+Supports tool calling for actions like saving messages.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from portfolio_chat.config import MODELS, PATHS
 from portfolio_chat.models.ollama_client import (
@@ -16,6 +17,8 @@ from portfolio_chat.models.ollama_client import (
     OllamaError,
 )
 from portfolio_chat.pipeline.layer4_route import Domain
+from portfolio_chat.tools.definitions import get_tools_prompt_section
+from portfolio_chat.tools.executor import ToolCall, ToolExecutor, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,7 @@ class Layer6Status:
     """Status codes for Layer 6 generation."""
 
     SUCCESS = "success"
+    TOOL_CALL = "tool_call"  # Response contains tool calls to execute
     ERROR = "error"
     EMPTY = "empty"
 
@@ -37,6 +41,8 @@ class Layer6Result:
     response: str
     model_used: str
     error_message: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    tool_results: list[ToolResult] = field(default_factory=list)
 
 
 class Layer6Generator:
@@ -47,6 +53,7 @@ class Layer6Generator:
     - Spotlighting technique for untrusted input
     - Conversation history integration
     - Temperature/top_p tuning for consistency
+    - Tool calling for actions like saving messages
     """
 
     # Default system prompt template (fallback if file not found)
@@ -72,7 +79,8 @@ GUIDELINES:
 
 THE TEST: Does this respect the visitor's attention? Does this illuminate rather than impose?
 
-DOMAIN: {domain}"""
+DOMAIN: {domain}
+{tools_section}"""
 
     # Spotlighting markers for untrusted content
     SPOTLIGHT_START = "<<<USER_MESSAGE>>>"
@@ -83,6 +91,7 @@ DOMAIN: {domain}"""
         client: AsyncOllamaClient | None = None,
         model: str | None = None,
         system_prompt: str | None = None,
+        enable_tools: bool = True,
     ) -> None:
         """
         Initialize generator.
@@ -91,14 +100,21 @@ DOMAIN: {domain}"""
             client: Ollama client instance.
             model: Model to use for generation.
             system_prompt: Custom system prompt template.
+            enable_tools: Whether to enable tool calling capabilities.
         """
         self.client = client or AsyncOllamaClient()
         self.model = model or MODELS.GENERATOR_MODEL
         self._system_prompt_template = system_prompt
         self._loaded_prompt: str | None = None
+        self._enable_tools = enable_tools
+        self._tool_executor: ToolExecutor | None = None
+
+    def set_tool_executor(self, executor: ToolExecutor) -> None:
+        """Set the tool executor for handling tool calls."""
+        self._tool_executor = executor
 
     def _get_system_prompt(self, domain: Domain) -> str:
-        """Get the system prompt, customized for domain."""
+        """Get the system prompt, customized for domain and tools."""
         if self._system_prompt_template:
             template = self._system_prompt_template
         elif self._loaded_prompt:
@@ -112,7 +128,18 @@ DOMAIN: {domain}"""
             else:
                 template = self.DEFAULT_SYSTEM_PROMPT
 
-        return template.format(domain=domain.value)
+        # Add tools section if enabled
+        tools_section = get_tools_prompt_section() if self._enable_tools else ""
+
+        # Handle templates that may or may not have {tools_section}
+        if "{tools_section}" in template:
+            return template.format(domain=domain.value, tools_section=tools_section)
+        elif "{domain}" in template:
+            # Append tools section if template doesn't have placeholder
+            base = template.format(domain=domain.value)
+            return base + "\n" + tools_section if tools_section else base
+        else:
+            return template + "\n" + tools_section if tools_section else template
 
     def _format_user_message(
         self,
@@ -120,6 +147,7 @@ DOMAIN: {domain}"""
         context: str,
         conversation_history: list[dict[str, str]] | None = None,
         sources: list[str] | None = None,
+        tool_results: list[ToolResult] | None = None,
     ) -> str:
         """
         Format the complete user message with spotlighting and source attribution.
@@ -151,6 +179,16 @@ DOMAIN: {domain}"""
                 parts.append(f"{role}: {content}")
             parts.append("")
 
+        # Add tool results if present (from a previous tool call)
+        if tool_results:
+            parts.append("TOOL EXECUTION RESULTS:")
+            for result in tool_results:
+                status = "SUCCESS" if result.success else "FAILED"
+                parts.append(f"- {result.tool_name} [{status}]: {result.result}")
+            parts.append("")
+            parts.append("Respond to the visitor based on these tool results. Be natural and helpful.")
+            parts.append("")
+
         # Add user message with spotlighting
         parts.append("CURRENT QUESTION:")
         parts.append(self.SPOTLIGHT_START)
@@ -173,6 +211,7 @@ DOMAIN: {domain}"""
         context: str,
         conversation_history: list[dict[str, str]] | None = None,
         sources: list[str] | None = None,
+        tool_results: list[ToolResult] | None = None,
     ) -> Layer6Result:
         """
         Generate a response.
@@ -182,6 +221,8 @@ DOMAIN: {domain}"""
             domain: The routed domain.
             context: Retrieved context for this domain.
             conversation_history: Previous conversation messages.
+            sources: List of source names for citation.
+            tool_results: Results from previously executed tools (for follow-up).
 
         Returns:
             Layer6Result with generated response.
@@ -198,7 +239,7 @@ DOMAIN: {domain}"""
         try:
             system_prompt = self._get_system_prompt(domain)
             user_message = self._format_user_message(
-                message, context, conversation_history, sources
+                message, context, conversation_history, sources, tool_results
             )
 
             response = await self.client.chat_text(
@@ -222,6 +263,20 @@ DOMAIN: {domain}"""
                     model_used=self.model,
                     error_message="Generated empty response",
                 )
+
+            # Check for tool calls in the response
+            if self._enable_tools and self._tool_executor:
+                tool_calls = self._tool_executor.parse_tool_calls(response)
+                if tool_calls:
+                    # Remove tool call blocks from visible response
+                    visible_response = self._tool_executor.remove_tool_calls(response)
+                    return Layer6Result(
+                        status=Layer6Status.TOOL_CALL,
+                        passed=True,
+                        response=visible_response,
+                        model_used=self.model,
+                        tool_calls=tool_calls,
+                    )
 
             return Layer6Result(
                 status=Layer6Status.SUCCESS,

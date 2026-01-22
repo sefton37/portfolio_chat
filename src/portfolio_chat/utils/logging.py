@@ -509,6 +509,35 @@ class AuditLogger:
             },
         )
 
+    def log_tool_execution(
+        self,
+        request_id: str,
+        tool_name: str,
+        success: bool,
+        result_summary: str,
+    ) -> None:
+        """
+        Log tool execution during conversation (L6).
+
+        Args:
+            request_id: Unique request ID.
+            tool_name: Name of the tool executed.
+            success: Whether the tool execution succeeded.
+            result_summary: Brief summary of the result.
+        """
+        self._logger.info(
+            "Tool executed",
+            extra={
+                "extra_data": {
+                    "event": "tool_execution",
+                    "request_id": request_id,
+                    "tool_name": tool_name,
+                    "success": success,
+                    "result_summary": result_summary,
+                }
+            },
+        )
+
 
 # Module-level audit logger instance
 audit_logger = AuditLogger()

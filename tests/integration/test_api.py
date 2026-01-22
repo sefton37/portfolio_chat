@@ -57,7 +57,7 @@ class TestChatEndpoint:
             "/chat",
             json={"message": "a" * 10000},
         )
-        # Should be rejected by Pydantic (max_length=5000)
+        # Should be rejected by Pydantic (max_length=SECURITY.MAX_INPUT_LENGTH, default 2000)
         assert response.status_code == 422
 
     def test_requires_message_field(self, client):
@@ -129,14 +129,26 @@ class TestRequestHeaders:
 class TestCORS:
     """Tests for CORS handling."""
 
-    def test_cors_headers_present(self, client):
-        """Test that CORS headers are present."""
+    def test_cors_allows_configured_origin(self, client):
+        """Test that CORS allows configured production origin."""
         response = client.options(
             "/chat",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": "https://kellogg.brengel.com",
                 "Access-Control-Request-Method": "POST",
             },
         )
-        # CORS middleware should allow the request
+        # CORS middleware should allow the production origin
         assert response.status_code in [200, 405]  # 405 if OPTIONS not explicitly handled
+
+    def test_cors_rejects_disallowed_origin(self, client):
+        """Test that CORS rejects origins not in the allowed list."""
+        response = client.options(
+            "/chat",
+            headers={
+                "Origin": "http://malicious-site.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        # Disallowed origin should be rejected (400) or not get CORS headers
+        assert response.status_code == 400 or "access-control-allow-origin" not in response.headers

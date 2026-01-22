@@ -120,6 +120,17 @@ class ServerConfig:
     LOG_LEVEL: str = _env_str("LOG_LEVEL", "INFO")
     DEBUG: bool = _env_str("DEBUG", "false").lower() == "true"
 
+    # CORS configuration - comma-separated list of allowed origins
+    # Default restricts to production domain; override for development
+    CORS_ORIGINS: tuple[str, ...] = tuple(
+        origin.strip()
+        for origin in _env_str(
+            "CORS_ORIGINS",
+            "https://kellogg.brengel.com,https://www.kellogg.brengel.com"
+        ).split(",")
+        if origin.strip()
+    )
+
 
 @dataclass(frozen=True)
 class PathConfig:

@@ -153,6 +153,17 @@ class PathConfig:
     PROMPTS_DIR: Path = BASE_DIR / "prompts"
 
 
+@dataclass(frozen=True)
+class AnalyticsConfig:
+    """Analytics and admin dashboard configuration."""
+
+    # Enable conversation logging
+    ENABLED: bool = _env_str("ANALYTICS_ENABLED", "true").lower() == "true"
+
+    # Admin dashboard enabled (requires localhost access)
+    ADMIN_ENABLED: bool = _env_str("ADMIN_ENABLED", "true").lower() == "true"
+
+
 # Module-level singletons (immutable)
 SECURITY = SecurityLimits()
 RATE_LIMITS = RateLimits()
@@ -160,6 +171,7 @@ MODELS = ModelConfig()
 CONVERSATION = ConversationLimits()
 SERVER = ServerConfig()
 PATHS = PathConfig()
+ANALYTICS = AnalyticsConfig()
 
 
 @lru_cache(maxsize=1)
@@ -176,4 +188,5 @@ def get_all_config() -> dict[str, object]:
             "context_dir": str(PATHS.CONTEXT_DIR),
             "prompts_dir": str(PATHS.PROMPTS_DIR),
         },
+        "analytics": ANALYTICS,
     }

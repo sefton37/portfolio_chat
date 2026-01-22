@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Chat Analytics</title>
+    <link rel="stylesheet" href="/admin/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Portfolio Chat Analytics</h1>
+            <div class="date-filters">
+                <label>
+                    From: <input type="date" id="start-date">
+                </label>
+                <label>
+                    To: <input type="date" id="end-date">
+                </label>
+                <button id="apply-filter">Apply</button>
+                <button id="reset-filter">Reset</button>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="total-conversations">-</div>
+                <div class="stat-label">Total Conversations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-messages">-</div>
+                <div class="stat-label">Total Messages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avg-messages">-</div>
+                <div class="stat-label">Avg Messages/Conv</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="median-messages">-</div>
+                <div class="stat-label">Median Messages/Conv</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avg-response-time">-</div>
+                <div class="stat-label">Avg Response Time</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-blocked">-</div>
+                <div class="stat-label">Blocked Requests</div>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <h2>Activity Over Time</h2>
+            <div class="chart-controls">
+                <select id="granularity">
+                    <option value="day" selected>Daily</option>
+                    <option value="hour">Hourly</option>
+                    <option value="week">Weekly</option>
+                </select>
+            </div>
+            <div class="chart-container">
+                <canvas id="activity-chart"></canvas>
+            </div>
+        </section>
+
+        <section class="domains-section">
+            <h2>Domains Breakdown</h2>
+            <div class="domains-list" id="domains-list">
+                <p class="loading">Loading...</p>
+            </div>
+        </section>
+
+        <section class="conversations-section">
+            <h2>Recent Conversations</h2>
+            <div class="conversations-list" id="conversations-list">
+                <p class="loading">Loading...</p>
+            </div>
+            <div class="pagination">
+                <button id="prev-page" disabled>Previous</button>
+                <span id="page-info">Page 1</span>
+                <button id="next-page">Next</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Conversation Detail Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Conversation Details</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/static/app.js"></script>
+</body>
+</html>

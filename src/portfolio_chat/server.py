@@ -13,9 +13,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -25,7 +28,8 @@ from prometheus_client import (
 )
 from pydantic import BaseModel, Field
 
-from portfolio_chat.config import SECURITY, SERVER
+from portfolio_chat.admin.router import admin_router
+from portfolio_chat.config import ANALYTICS, SECURITY, SERVER
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator import PipelineOrchestrator
 from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
@@ -235,6 +239,14 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "X-Request-ID"],
 )
+
+# Mount admin router and static files (localhost-only access enforced in router)
+if ANALYTICS.ADMIN_ENABLED:
+    app.include_router(admin_router)
+    # Mount static files for admin dashboard
+    static_dir = Path(__file__).parent / "static" / "admin"
+    if static_dir.exists():
+        app.mount("/admin/static", StaticFiles(directory=static_dir), name="admin_static")
 
 
 @app.middleware("http")

@@ -12,6 +12,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from portfolio_chat.analytics.storage import ConversationStorage as AnalyticsStorage
+from portfolio_chat.config import ANALYTICS
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.conversation.manager import ConversationManager, MessageRole
 from portfolio_chat.models.ollama_client import AsyncOllamaClient
@@ -68,6 +70,7 @@ class PipelineOrchestrator:
         conversation_manager: ConversationManager | None = None,
         ollama_client: AsyncOllamaClient | None = None,
         contact_storage: ContactStorage | None = None,
+        analytics_storage: AnalyticsStorage | None = None,
     ) -> None:
         """
         Initialize orchestrator with all layer components.
@@ -77,12 +80,14 @@ class PipelineOrchestrator:
             conversation_manager: Shared conversation manager.
             ollama_client: Shared Ollama client.
             contact_storage: Storage for contact messages (tool support).
+            analytics_storage: Storage for conversation analytics logging.
         """
         # Shared components
         self.rate_limiter = rate_limiter or InMemoryRateLimiter()
         self.conversation_manager = conversation_manager or ConversationManager()
         self.ollama_client = ollama_client or AsyncOllamaClient()
         self.contact_storage = contact_storage or ContactStorage()
+        self.analytics_storage = analytics_storage or (AnalyticsStorage() if ANALYTICS.ENABLED else None)
 
         # Initialize all layers
         self.layer0 = Layer0NetworkGateway(rate_limiter=self.rate_limiter)
@@ -198,6 +203,15 @@ class PipelineOrchestrator:
                 ip_hash=ip_hash,
             )
 
+            # Log to analytics storage
+            if self.analytics_storage:
+                await self.analytics_storage.log_message(
+                    conversation_id=conv_id,
+                    role="user",
+                    content=sanitized_message,
+                    ip_hash=ip_hash,
+                )
+
             # ===== LAYER 2: Jailbreak Detection =====
             l2_start = time.time()
             conversation_history = conversation.get_history()
@@ -220,6 +234,16 @@ class PipelineOrchestrator:
 
             if l2_result.blocked:
                 metrics.blocked_at_layer = "L2"
+                # Log blocked status to analytics
+                if self.analytics_storage:
+                    await self.analytics_storage.log_message(
+                        conversation_id=conv_id,
+                        role="assistant",
+                        content="[BLOCKED]",
+                        ip_hash=ip_hash,
+                        response_time_ms=(time.time() - start_time) * 1000,
+                        blocked_at_layer="L2",
+                    )
                 return self.layer9.deliver_error(
                     error_type="blocked_input",
                     request_id=request_id,
@@ -439,6 +463,21 @@ class PipelineOrchestrator:
                 domain=l4_result.domain.value,
                 revised=revised,
             )
+
+            # Calculate response time for this turn
+            response_time_ms = (time.time() - start_time) * 1000
+
+            # Log assistant response to analytics storage
+            if self.analytics_storage:
+                await self.analytics_storage.log_message(
+                    conversation_id=conv_id,
+                    role="assistant",
+                    content=final_response,
+                    ip_hash=ip_hash,
+                    domain=l4_result.domain.value,
+                    response_time_ms=response_time_ms,
+                    blocked_at_layer=metrics.blocked_at_layer,
+                )
 
             # ===== Update Conversation History =====
             await self.conversation_manager.add_message(

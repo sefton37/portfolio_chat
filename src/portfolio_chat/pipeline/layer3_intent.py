@@ -183,7 +183,12 @@ OUTPUT FORMAT (JSON only):
             question_type_str = response.get("question_type", "ambiguous")
             entities = response.get("entities", [])
             tone_str = response.get("emotional_tone", "neutral")
-            confidence = float(response.get("confidence", 0.5))
+            # Clamp confidence to valid 0.0-1.0 range
+            raw_confidence = response.get("confidence", 0.5)
+            try:
+                confidence = max(0.0, min(1.0, float(raw_confidence)))
+            except (TypeError, ValueError):
+                confidence = 0.5
 
             # Map to enums
             try:

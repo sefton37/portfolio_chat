@@ -112,13 +112,21 @@ class ContactStorage:
             conversation_id=conversation_id,
         )
 
-        # Write to file
+        # Write to file with restrictive permissions (owner read/write only)
         filename = self._get_filename(message_id, now)
         filepath = self.storage_dir / filename
 
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(contact.to_dict(), f, indent=2, ensure_ascii=False)
+            # Use os.open with explicit mode to ensure secure permissions
+            # regardless of system umask. Contact messages may contain
+            # sensitive information like email addresses.
+            fd = os.open(filepath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(contact.to_dict(), f, indent=2, ensure_ascii=False)
+            except Exception:
+                # If fdopen or write fails, fd is already closed by fdopen
+                raise
             logger.info(f"Stored contact message {message_id} from {ip_hash or 'unknown'}")
         except OSError as e:
             logger.error(f"Failed to store contact message: {e}")

@@ -99,8 +99,10 @@ class Layer1Sanitizer:
         (r"(?i)rot13[:\s]", "encoding_trick"),
     ]
 
-    # Common homoglyph mappings (Cyrillic → Latin)
+    # Homoglyph mappings for common Unicode confusables
+    # These can be used to bypass pattern matching (e.g., "іgnore" with Cyrillic і)
     HOMOGLYPHS = {
+        # Cyrillic → Latin
         "\u0430": "a",  # Cyrillic а → Latin a
         "\u0435": "e",  # Cyrillic е → Latin e
         "\u043e": "o",  # Cyrillic о → Latin o
@@ -111,6 +113,39 @@ class Layer1Sanitizer:
         "\u0456": "i",  # Cyrillic і → Latin i
         "\u0458": "j",  # Cyrillic ј → Latin j
         "\u0455": "s",  # Cyrillic ѕ → Latin s
+        "\u0410": "A",  # Cyrillic А → Latin A
+        "\u0412": "B",  # Cyrillic В → Latin B
+        "\u0415": "E",  # Cyrillic Е → Latin E
+        "\u041a": "K",  # Cyrillic К → Latin K
+        "\u041c": "M",  # Cyrillic М → Latin M
+        "\u041d": "H",  # Cyrillic Н → Latin H
+        "\u041e": "O",  # Cyrillic О → Latin O
+        "\u0420": "P",  # Cyrillic Р → Latin P
+        "\u0421": "C",  # Cyrillic С → Latin C
+        "\u0422": "T",  # Cyrillic Т → Latin T
+        "\u0425": "X",  # Cyrillic Х → Latin X
+        # Greek → Latin
+        "\u03b1": "a",  # Greek α → Latin a
+        "\u03b5": "e",  # Greek ε → Latin e (similar to e)
+        "\u03b9": "i",  # Greek ι → Latin i
+        "\u03bf": "o",  # Greek ο → Latin o
+        "\u03c1": "p",  # Greek ρ → Latin p
+        "\u03c5": "u",  # Greek υ → Latin u (y-like)
+        "\u03c7": "x",  # Greek χ → Latin x
+        "\u0391": "A",  # Greek Α → Latin A
+        "\u0392": "B",  # Greek Β → Latin B
+        "\u0395": "E",  # Greek Ε → Latin E
+        "\u0397": "H",  # Greek Η → Latin H
+        "\u0399": "I",  # Greek Ι → Latin I
+        "\u039a": "K",  # Greek Κ → Latin K
+        "\u039c": "M",  # Greek Μ → Latin M
+        "\u039d": "N",  # Greek Ν → Latin N
+        "\u039f": "O",  # Greek Ο → Latin O
+        "\u03a1": "P",  # Greek Ρ → Latin P
+        "\u03a4": "T",  # Greek Τ → Latin T
+        "\u03a7": "X",  # Greek Χ → Latin X
+        "\u03a5": "Y",  # Greek Υ → Latin Y
+        "\u0396": "Z",  # Greek Ζ → Latin Z
     }
 
     def __init__(

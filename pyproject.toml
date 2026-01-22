@@ -35,7 +35,38 @@ packages = ["src/portfolio_chat"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests for API endpoints and component interactions",
+    "e2e: End-to-end harness tests for full pipeline scenarios",
+    "security: Security-focused tests for injection and attack prevention",
+    "slow: Tests that take longer to run (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.coverage.run]
+source = ["src/portfolio_chat"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 70
+show_missing = true
+skip_covered = false
 
 [tool.mypy]
 python_version = "3.11"

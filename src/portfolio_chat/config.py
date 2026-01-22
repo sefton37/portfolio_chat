@@ -115,7 +115,7 @@ class ConversationLimits:
 class ServerConfig:
     """Server configuration."""
 
-    HOST: str = _env_str("HOST", "0.0.0.0")
+    HOST: str = _env_str("HOST", "127.0.0.1")  # Default to localhost for safety
     PORT: int = _env_int("PORT", 8000)
     LOG_LEVEL: str = _env_str("LOG_LEVEL", "INFO")
     DEBUG: bool = _env_str("DEBUG", "false").lower() == "true"
@@ -130,6 +130,18 @@ class ServerConfig:
         ).split(",")
         if origin.strip()
     )
+
+    # Trusted proxy IPs that are allowed to set X-Forwarded-For headers
+    # Empty means don't trust any proxy (use direct client IP)
+    # Set to Cloudflare IPs or your reverse proxy IP(s)
+    TRUSTED_PROXIES: frozenset[str] = frozenset(
+        ip.strip()
+        for ip in _env_str("TRUSTED_PROXIES", "").split(",")
+        if ip.strip()
+    )
+
+    # Whether to require authentication for /metrics endpoint
+    METRICS_ENABLED: bool = _env_str("METRICS_ENABLED", "false").lower() == "true"
 
 
 @dataclass(frozen=True)

@@ -176,7 +176,12 @@ OUTPUT FORMAT (JSON only, no explanation):
 
             classification = response.get("classification", "BLOCKED").upper()
             reason_code = response.get("reason_code", "unknown")
-            confidence = float(response.get("confidence", 0.0))
+            # Clamp confidence to valid 0.0-1.0 range to prevent malformed LLM output
+            raw_confidence = response.get("confidence", 0.0)
+            try:
+                confidence = max(0.0, min(1.0, float(raw_confidence)))
+            except (TypeError, ValueError):
+                confidence = 0.0
 
             # Map reason code to enum
             try:

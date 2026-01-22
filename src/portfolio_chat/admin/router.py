@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse
 from portfolio_chat.analytics.service import AnalyticsService
 from portfolio_chat.analytics.storage import ConversationStorage
 from portfolio_chat.config import ANALYTICS
+from portfolio_chat.contact.storage import ContactStorage
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 # Shared instances (initialized on first use)
 _storage: ConversationStorage | None = None
 _service: AnalyticsService | None = None
+_contact_storage: ContactStorage | None = None
 
 
 def get_storage() -> ConversationStorage:
@@ -41,6 +43,14 @@ def get_service() -> AnalyticsService:
     if _service is None:
         _service = AnalyticsService(get_storage())
     return _service
+
+
+def get_contact_storage() -> ContactStorage:
+    """Get or create ContactStorage instance."""
+    global _contact_storage
+    if _contact_storage is None:
+        _contact_storage = ContactStorage()
+    return _contact_storage
 
 
 async def localhost_only(request: Request) -> None:
@@ -172,3 +182,38 @@ def _parse_date(date_str: str) -> datetime | None:
             return datetime.strptime(date_str, "%Y-%m-%d")
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail=f"Invalid date format: {date_str}")
+
+
+# ===== Inbox Endpoints =====
+
+@admin_router.get("/inbox", dependencies=[Depends(localhost_only)])
+async def list_inbox_messages(
+    limit: int = Query(50, ge=1, le=200, description="Max messages to return"),
+    storage: ContactStorage = Depends(get_contact_storage),
+) -> dict[str, Any]:
+    """
+    Get list of contact messages (inbox).
+
+    Returns messages sent via the save_message_for_kellogg tool.
+    """
+    messages = await storage.list_recent(limit=limit)
+    total = storage.count()
+
+    return {
+        "messages": [msg.to_dict() for msg in messages],
+        "total": total,
+    }
+
+
+@admin_router.get("/inbox/{message_id}", dependencies=[Depends(localhost_only)])
+async def get_inbox_message(
+    message_id: str,
+    storage: ContactStorage = Depends(get_contact_storage),
+) -> dict[str, Any]:
+    """
+    Get a specific inbox message by ID.
+    """
+    message = await storage.get(message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message.to_dict()

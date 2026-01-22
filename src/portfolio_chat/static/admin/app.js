@@ -22,6 +22,8 @@ const elements = {
     modal: document.getElementById('modal'),
     modalBody: document.getElementById('modal-body'),
     closeModal: document.getElementById('close-modal'),
+    inboxList: document.getElementById('inbox-list'),
+    inboxCount: document.getElementById('inbox-count'),
 };
 
 // Initialize
@@ -120,6 +122,7 @@ async function loadDashboard() {
         loadStats(),
         loadTimeseries(),
         loadConversations(),
+        loadInbox(),
     ]);
 }
 
@@ -376,6 +379,115 @@ function renderConversationDetail(conv) {
 
 function closeModal() {
     elements.modal.classList.remove('active');
+}
+
+// Inbox functions
+async function fetchInbox() {
+    const response = await fetch('/admin/inbox?limit=50');
+    if (!response.ok) throw new Error('Failed to fetch inbox');
+    return response.json();
+}
+
+async function fetchInboxMessage(id) {
+    const response = await fetch(`/admin/inbox/${id}`);
+    if (!response.ok) throw new Error('Failed to fetch message');
+    return response.json();
+}
+
+async function loadInbox() {
+    elements.inboxList.innerHTML = '<p class="loading">Loading...</p>';
+
+    try {
+        const data = await fetchInbox();
+        elements.inboxCount.textContent = data.total;
+        renderInbox(data.messages);
+    } catch (error) {
+        console.error('Failed to load inbox:', error);
+        elements.inboxList.innerHTML = '<p class="error">Failed to load inbox</p>';
+    }
+}
+
+function renderInbox(messages) {
+    if (!messages || messages.length === 0) {
+        elements.inboxList.innerHTML = '<p class="empty">No messages in inbox</p>';
+        return;
+    }
+
+    elements.inboxList.innerHTML = messages.map(msg => `
+        <div class="inbox-item" data-id="${escapeHtml(msg.id)}">
+            <div class="inbox-item-header">
+                <span class="inbox-item-sender">${escapeHtml(msg.sender_name || 'Anonymous')}</span>
+                <span class="inbox-item-time">${formatDateTime(msg.timestamp)}</span>
+            </div>
+            <div class="inbox-item-preview">${escapeHtml(msg.message.substring(0, 150))}${msg.message.length > 150 ? '...' : ''}</div>
+            <div class="inbox-item-meta">
+                ${msg.sender_email ? `<span>Email: ${escapeHtml(msg.sender_email)}</span>` : ''}
+                ${msg.conversation_id ? `<a href="#" class="view-conversation" data-conv-id="${escapeHtml(msg.conversation_id)}">View Conversation</a>` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    // Add click handlers for inbox items
+    document.querySelectorAll('.inbox-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            // Don't open modal if clicking the conversation link
+            if (e.target.classList.contains('view-conversation')) {
+                e.preventDefault();
+                const convId = e.target.dataset.convId;
+                openConversation(convId);
+                return;
+            }
+            openInboxMessage(item.dataset.id);
+        });
+    });
+}
+
+async function openInboxMessage(id) {
+    elements.modal.classList.add('active');
+    elements.modalBody.innerHTML = '<p class="loading">Loading...</p>';
+
+    try {
+        const msg = await fetchInboxMessage(id);
+        renderInboxMessageDetail(msg);
+    } catch (error) {
+        console.error('Failed to load message:', error);
+        elements.modalBody.innerHTML = '<p class="error">Failed to load message</p>';
+    }
+}
+
+function renderInboxMessageDetail(msg) {
+    elements.modalBody.innerHTML = `
+        <div class="inbox-detail-meta">
+            <div class="meta-item">
+                <div class="label">From</div>
+                <div class="value">${escapeHtml(msg.sender_name || 'Anonymous')}</div>
+            </div>
+            <div class="meta-item">
+                <div class="label">Email</div>
+                <div class="value">${escapeHtml(msg.sender_email || 'Not provided')}</div>
+            </div>
+            <div class="meta-item">
+                <div class="label">Received</div>
+                <div class="value">${formatDateTime(msg.timestamp)}</div>
+            </div>
+            <div class="meta-item">
+                <div class="label">Message ID</div>
+                <div class="value" style="font-family: monospace; font-size: 0.85rem;">${escapeHtml(msg.id)}</div>
+            </div>
+            ${msg.conversation_id ? `
+            <div class="meta-item">
+                <div class="label">Conversation</div>
+                <div class="value"><a href="#" onclick="closeModal(); openConversation('${escapeHtml(msg.conversation_id)}'); return false;" style="color: var(--accent);">View</a></div>
+            </div>
+            ` : ''}
+        </div>
+        <h3 style="margin-bottom: 0.5rem;">Message</h3>
+        <div class="inbox-message-full">${escapeHtml(msg.message)}</div>
+        ${msg.context ? `
+        <h3 style="margin-top: 1rem; margin-bottom: 0.5rem;">Conversation Context</h3>
+        <div class="inbox-message-full">${escapeHtml(msg.context)}</div>
+        ` : ''}
+    `;
 }
 
 // Pagination

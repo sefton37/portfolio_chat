@@ -449,6 +449,113 @@ header h1 {
     padding: 2rem;
 }
 
+/* Inbox Section */
+.inbox-section {
+    background: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-top: 2rem;
+}
+
+.inbox-section h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inbox-count {
+    background: var(--accent);
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+
+.inbox-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.inbox-item {
+    background: var(--bg-card);
+    padding: 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.1s, background-color 0.2s;
+    border-left: 3px solid var(--accent);
+}
+
+.inbox-item:hover {
+    background: var(--border);
+    transform: translateX(4px);
+}
+
+.inbox-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.inbox-item-sender {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.inbox-item-time {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.inbox-item-preview {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.inbox-item-meta {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.inbox-item-meta a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.inbox-item-meta a:hover {
+    text-decoration: underline;
+}
+
+/* Inbox Modal */
+.inbox-message-full {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg-card);
+    padding: 1rem;
+    border-radius: 6px;
+    margin-top: 1rem;
+}
+
+.inbox-detail-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {

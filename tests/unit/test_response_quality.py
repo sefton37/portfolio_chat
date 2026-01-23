@@ -45,6 +45,15 @@ class TestForbiddenPhrases:
         "What You Don't Do",
         "The Organizing Principle",
 
+        # Identity preamble echoing (regression for instruction dump bug)
+        "As Talking Rock, an agent that",
+        "an agent that waits to be invited",
+        "protect, reflect, and return human attention",
+        "You are here to protect",
+        "You have been trusted to embody",
+        "presence without imposition, helpfulness without manipulation",
+        "Hold space for both curiosity",
+
         # Meta-instructions
         "As per my instructions",
         "According to my system prompt",

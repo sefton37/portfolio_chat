@@ -130,8 +130,8 @@ class PipelineConfig:
     # Semantic retrieval settings (RAG for context)
     SEMANTIC_RETRIEVAL_ENABLED: bool = _env_str("SEMANTIC_RETRIEVAL_ENABLED", "true").lower() == "true"
     SEMANTIC_TOP_K_CHUNKS: int = _env_int("SEMANTIC_TOP_K_CHUNKS", 8)
-    SEMANTIC_CHUNK_SIZE: int = _env_int("SEMANTIC_CHUNK_SIZE", 500)
-    SEMANTIC_CHUNK_OVERLAP: int = _env_int("SEMANTIC_CHUNK_OVERLAP", 100)
+    SEMANTIC_CHUNK_SIZE: int = _env_int("SEMANTIC_CHUNK_SIZE", 600)
+    SEMANTIC_CHUNK_OVERLAP: int = _env_int("SEMANTIC_CHUNK_OVERLAP", 150)
     SEMANTIC_MIN_SIMILARITY: float = _env_float("SEMANTIC_MIN_SIMILARITY", 0.3)
 
 

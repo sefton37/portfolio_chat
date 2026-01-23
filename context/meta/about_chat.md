@@ -55,7 +55,7 @@ This system demonstrates Kellogg's commitment to:
 
 ## Design Philosophy
 
-The chat embodies Kellogg's "No One" philosophy in software form - an assistant that serves without coercing, invites without interrupting, and operates through transparency rather than opacity. Every response is grounded in curated, verified context rather than allowing the model to hallucinate.
+The chat embodies Kellogg's approach to building helpful tools - an assistant that serves without coercing, invites without interrupting, and operates through transparency rather than opacity. Every response is grounded in curated, verified context rather than allowing the model to hallucinate.
 
 ## Limitations
 

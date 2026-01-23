@@ -260,17 +260,13 @@ class ConversationStorage:
             end_date: Filter to conversations before this date.
 
         Returns:
-            List of ConversationLog objects, newest first.
+            List of ConversationLog objects, newest first (sorted by last_activity).
         """
         conversations: list[ConversationLog] = []
 
         try:
-            # Get all date directories, sorted descending
-            date_dirs = sorted(
-                [d for d in self.storage_dir.iterdir() if d.is_dir() and not d.name.startswith(".")],
-                key=lambda p: p.name,
-                reverse=True,
-            )
+            # Get all date directories
+            date_dirs = [d for d in self.storage_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
 
             # Filter by date range
             if start_date:
@@ -283,20 +279,24 @@ class ConversationStorage:
             # Collect all conversation files
             all_files: list[Path] = []
             for date_dir in date_dirs:
-                files = sorted(date_dir.glob("conv_*.json"), reverse=True)
-                all_files.extend(files)
+                all_files.extend(date_dir.glob("conv_*.json"))
 
-            # Apply offset and limit
-            selected_files = all_files[offset : offset + limit]
-
-            for filepath in selected_files:
+            # Load all conversations to sort by actual timestamp
+            all_conversations: list[ConversationLog] = []
+            for filepath in all_files:
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        conversations.append(ConversationLog.from_dict(data))
+                        all_conversations.append(ConversationLog.from_dict(data))
                 except (json.JSONDecodeError, TypeError) as e:
                     logger.warning(f"Failed to read conversation file {filepath}: {e}")
                     continue
+
+            # Sort by last_activity descending (most recent first)
+            all_conversations.sort(key=lambda c: c.last_activity, reverse=True)
+
+            # Apply offset and limit
+            conversations = all_conversations[offset : offset + limit]
 
         except OSError as e:
             logger.error(f"Failed to list conversations: {e}")

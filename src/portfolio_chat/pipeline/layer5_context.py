@@ -749,6 +749,9 @@ class SemanticContextRetriever(Layer5ContextRetriever):
         """
         Retrieve context ranked by semantic similarity to message.
 
+        Always includes required sources (overview files) first for grounding,
+        then adds semantically relevant chunks for specific details.
+
         Args:
             domain: The target domain.
             message: The user's message to match against.
@@ -784,6 +787,11 @@ class SemanticContextRetriever(Layer5ContextRetriever):
             logger.error(f"Failed to embed query: {e}")
             return self.retrieve(domain, intent)
 
+        # Identify required sources for this domain (overview files that should always be included)
+        required_source_names = {
+            s.name for s in self._get_sources_for_domain(domain) if s.required
+        }
+
         # Compute similarity for all chunks
         scored_chunks: list[tuple[ChunkWithEmbedding, float]] = []
         for chunk in chunks:
@@ -791,25 +799,46 @@ class SemanticContextRetriever(Layer5ContextRetriever):
             if similarity >= self.min_similarity:
                 scored_chunks.append((chunk, similarity))
 
-        # Sort by similarity descending and take top K
+        # Sort by similarity descending
         scored_chunks.sort(key=lambda x: x[1], reverse=True)
-        top_chunks = scored_chunks[: self.top_k]
 
-        if not top_chunks:
-            # No chunks above threshold - use base retrieval
-            logger.debug(f"No chunks above similarity threshold for query")
-            return self.retrieve(domain, intent)
-
-        # Build context from top chunks
+        # Build context in two phases:
+        # Phase 1: Include first chunks from required sources (overview/grounding)
+        # Phase 2: Add top semantic matches (specific details)
         context_parts: list[str] = []
         sources_loaded: set[str] = set()
+        included_chunk_texts: set[str] = set()  # Track to avoid duplicates
         total_length = 0
 
-        for chunk, similarity in top_chunks:
+        # Phase 1: Required source chunks (first 2 chunks from each required source)
+        REQUIRED_CHUNKS_PER_SOURCE = 2
+        for source_name in required_source_names:
+            source_chunks = [c for c in chunks if c.source_name == source_name]
+            # Take first N chunks (they contain the intro/summary)
+            for chunk in source_chunks[:REQUIRED_CHUNKS_PER_SOURCE]:
+                if total_length >= self.max_context_length:
+                    break
+
+                chunk_content = f"### From: {chunk.source_display_name} (overview)\n{chunk.text}"
+                remaining = self.max_context_length - total_length
+                if len(chunk_content) > remaining:
+                    chunk_content = chunk_content[:remaining] + "\n[Truncated]"
+
+                context_parts.append(chunk_content)
+                sources_loaded.add(chunk.source_name)
+                included_chunk_texts.add(chunk.text)
+                total_length += len(chunk_content)
+
+        # Phase 2: Add top semantic matches (excluding already included chunks)
+        semantic_added = 0
+        for chunk, similarity in scored_chunks:
+            if semantic_added >= self.top_k:
+                break
             if total_length >= self.max_context_length:
                 break
+            if chunk.text in included_chunk_texts:
+                continue  # Skip duplicates
 
-            # Format with source attribution and similarity
             chunk_header = f"### From: {chunk.source_display_name} (relevance: {similarity:.2f})"
             chunk_content = f"{chunk_header}\n{chunk.text}"
 
@@ -819,23 +848,30 @@ class SemanticContextRetriever(Layer5ContextRetriever):
 
             context_parts.append(chunk_content)
             sources_loaded.add(chunk.source_name)
+            included_chunk_texts.add(chunk.text)
             total_length += len(chunk_content)
+            semantic_added += 1
+
+        if not context_parts:
+            # No context at all - use base retrieval
+            logger.debug(f"No context built for query")
+            return self.retrieve(domain, intent)
 
         # Build final context
-        context = "## Most Relevant Context\n\n" + "\n\n".join(context_parts)
+        context = "## Context\n\n" + "\n\n".join(context_parts)
 
         # Determine missing sources (sources in domain but not in results)
         all_source_names = {s.name for s in self._get_sources_for_domain(domain)}
         sources_missing = list(all_source_names - sources_loaded)
 
         # Calculate context quality based on similarity scores
-        if top_chunks:
-            avg_similarity = sum(sim for _, sim in top_chunks) / len(top_chunks)
-            top_similarity = top_chunks[0][1]
+        if scored_chunks:
+            avg_similarity = sum(sim for _, sim in scored_chunks[:self.top_k]) / min(len(scored_chunks), self.top_k)
+            top_similarity = scored_chunks[0][1]
             # Quality is weighted average of top and average similarity
             context_quality = round(0.6 * top_similarity + 0.4 * avg_similarity, 2)
         else:
-            context_quality = 0.0
+            context_quality = 0.8  # Default quality when we have required sources but no semantic matches
 
         # Check for placeholder content
         has_placeholder = self._is_placeholder_content(context)

@@ -93,12 +93,24 @@ class ToolExecutor:
             try:
                 data = json.loads(json_str)
 
-                # Accept both "tool" and "name" keys (LLMs sometimes use "name")
-                tool_name = data.get("tool") or data.get("name")
+                # Accept multiple key formats - LLMs have different conventions
+                # Priority: "tool" > "name" > "action"
+                tool_name = data.get("tool") or data.get("name") or data.get("action")
                 if not tool_name:
-                    logger.warning(f"Tool call missing 'tool' or 'name' field: {json_str}")
+                    logger.warning(f"Tool call missing tool name field: {json_str}")
                     continue
-                parameters = data.get("parameters", {})
+
+                # Accept multiple parameter formats:
+                # 1. {"tool": "x", "parameters": {"message": "..."}} - standard
+                # 2. {"action": "x", "message": "..."} - mistral style (flat)
+                parameters = data.get("parameters") or {}
+
+                # If parameters empty, extract flat keys that look like params
+                if not parameters:
+                    param_keys = {"message", "visitor_name", "visitor_email"}
+                    for key in param_keys:
+                        if key in data:
+                            parameters[key] = data[key]
 
                 # Validate tool exists
                 valid_tools = {t.name for t in AVAILABLE_TOOLS}

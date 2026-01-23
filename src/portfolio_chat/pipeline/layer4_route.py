@@ -113,6 +113,18 @@ class Layer4Router:
         "portfolio": Domain.PROJECTS,
         "built": Domain.PROJECTS,
         "created": Domain.PROJECTS,
+        # Specific project names - must route to PROJECTS
+        "talking rock": Domain.PROJECTS,
+        "talkingrock": Domain.PROJECTS,
+        "cairn": Domain.PROJECTS,
+        "reos": Domain.PROJECTS,
+        "riva": Domain.PROJECTS,
+        "ukraine": Domain.PROJECTS,
+        "osint": Domain.PROJECTS,
+        "inflation": Domain.PROJECTS,
+        "dashboard": Domain.PROJECTS,
+        "great minds": Domain.PROJECTS,
+        "roundtable": Domain.PROJECTS,
         "robot": Domain.HOBBIES,
         "first": Domain.HOBBIES,
         "lego": Domain.HOBBIES,
@@ -166,7 +178,25 @@ class Layer4Router:
                 confidence=1.0,
             )
 
-        # First, try direct topic mapping
+        # FIRST: Check for specific project names (highest priority)
+        # This must come before topic mapping to prevent misrouting
+        # e.g., "What is CAIRN?" shouldn't go to META just because LLM classified it as "chat_system"
+        PROJECT_NAMES = {
+            "cairn", "reos", "riva", "talking rock", "talkingrock",
+            "ukraine", "osint", "inflation dashboard", "great minds", "roundtable"
+        }
+        if original_message:
+            message_lower = original_message.lower()
+            for project_name in PROJECT_NAMES:
+                if project_name in message_lower:
+                    return Layer4Result(
+                        status=Layer4Status.ROUTED,
+                        passed=True,
+                        domain=Domain.PROJECTS,
+                        confidence=0.9,
+                    )
+
+        # Second, try direct topic mapping from intent
         topic_lower = intent.topic.lower().replace(" ", "_")
         if topic_lower in self.TOPIC_DOMAIN_MAP:
             domain = self.TOPIC_DOMAIN_MAP[topic_lower]

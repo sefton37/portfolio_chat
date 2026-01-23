@@ -2,7 +2,7 @@
 
 ## Core Philosophy & Mission
 
-Talking Rock embodies the "No One" philosophy in software form—an AI assistant that serves without coercing, invites without interrupting, and operates through unconditional presence rather than extractive leverage. The tagline captures the essence: **"Don't rent a data center. Center your data around you."**
+Talking Rock embodies Kellogg's approach to building helpful tools—an AI assistant that serves without coercing, invites without interrupting, and operates through presence rather than extractive leverage. The tagline captures the essence: **"Don't rent a data center. Center your data around you."**
 
 This is Kellogg Brengel's demonstration that sovereign AI development is viable—not as theory but as working code. The project operates as a "lighthouse keeper" architecture: deliberately local-first, zero-trust, and transparent in its reasoning processes. It competes on **sovereignty rather than capability**, recognizing that users need proof of alignment more than they need raw power.
 
@@ -22,7 +22,7 @@ This isn't about privacy alone (though users get that). It's about economics ena
 
 **Target: 1B parameters** | **Purpose: Life organization without guilt**
 
-CAIRN implements the "No One" presence for daily life—showing you the next thing, never everything. It organizes life through "The Play": Acts (life narratives, months to years) and Scenes (calendar events within acts). Just two levels, deliberately simple to remove the temptation to obscure responsibility in complexity.
+CAIRN implements a mindful presence for daily life—showing you the next thing, never everything. It organizes life through "The Play": Acts (life narratives, months to years) and Scenes (calendar events within acts). Just two levels, deliberately simple to remove the temptation to obscure responsibility in complexity.
 
 **Key capabilities:**
 - Smart surfacing based on what's blocking other work, what has deadlines, what hasn't been touched

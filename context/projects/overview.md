@@ -7,7 +7,7 @@ Kellogg Brengel's projects demonstrate his approach to building software: sovere
 ### Talking Rock
 **Local-First AI Assistant Framework**
 
-A three-agent AI system designed to run on consumer hardware (8GB RAM, no GPU required). Embodies the "No One" philosophy - AI that serves without coercing, operates through invitation rather than extraction.
+A three-agent AI system designed to run on consumer hardware (8GB RAM, no GPU required). Embodies Kellogg's approach to building helpful tools - AI that serves without coercing, operates through invitation rather than extraction.
 
 - **CAIRN**: Attention management agent for life organization
 - **ReOS**: Natural language Linux system control

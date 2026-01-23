@@ -144,3 +144,104 @@ class TestLayer4Router:
 
         desc = Layer4Router.get_domain_description(Domain.PROJECTS)
         assert "project" in desc.lower()
+
+
+class TestProjectNameRouting:
+    """
+    Regression tests for project name routing.
+
+    These tests ensure specific project names route to PROJECTS domain
+    regardless of how the LLM classifies the topic. This prevents bugs
+    like CAIRN routing to META because it contains 'ai'.
+    """
+
+    @pytest.fixture
+    def router(self):
+        return Layer4Router()
+
+    @pytest.mark.parametrize("project_name,query", [
+        ("cairn", "What is CAIRN?"),
+        ("cairn", "Tell me about cairn"),
+        ("reos", "What is ReOS?"),
+        ("reos", "How does reos work?"),
+        ("riva", "What is RIVA?"),
+        ("talking rock", "What is Talking Rock?"),
+        ("talkingrock", "Tell me about talkingrock"),
+        ("ukraine", "Tell me about the Ukraine project"),
+        ("osint", "What is the OSINT reader?"),
+        ("inflation", "Tell me about the inflation dashboard"),
+        ("great minds", "What is Great Minds Roundtable?"),
+    ])
+    def test_project_name_routes_to_projects(self, router, project_name, query):
+        """Project names must route to PROJECTS domain."""
+        # Even with a generic or wrong topic, project names should win
+        intent = Intent(
+            topic="general",
+            question_type=QuestionType.FACTUAL,
+            confidence=0.7,
+        )
+        result = router.route(intent, original_message=query)
+        assert result.domain == Domain.PROJECTS, f"'{query}' should route to PROJECTS"
+
+    @pytest.mark.parametrize("project_name,query,wrong_topic", [
+        ("cairn", "What is CAIRN?", "chat_system"),  # LLM thinks it's about AI/chat
+        ("reos", "Tell me about ReOS", "chat_system"),
+        ("riva", "What is RIVA?", "chat_system"),
+        ("ukraine", "Ukraine project details", "general"),
+    ])
+    def test_project_name_overrides_wrong_topic(self, router, project_name, query, wrong_topic):
+        """
+        Project names must take priority over topic classification.
+
+        This is a regression test for the bug where 'What is CAIRN?' was
+        classified as topic='chat_system' and routed to META instead of PROJECTS.
+        """
+        intent = Intent(
+            topic=wrong_topic,
+            question_type=QuestionType.FACTUAL,
+            confidence=0.8,
+        )
+        result = router.route(intent, original_message=query)
+        assert result.domain == Domain.PROJECTS, (
+            f"'{query}' with topic='{wrong_topic}' should still route to PROJECTS"
+        )
+
+    def test_cairn_routes_despite_ai_keyword(self, router):
+        """
+        CAIRN contains 'ai' but should route to PROJECTS, not META.
+
+        This tests the keyword conflict resolution: 'cairn' (PROJECTS)
+        should take priority over 'ai' (META) being a substring.
+        """
+        intent = Intent(
+            topic="chat_system",  # LLM saw 'AI' and classified as chat
+            question_type=QuestionType.FACTUAL,
+            entities=["CAIRN"],
+            confidence=0.8,
+        )
+        result = router.route(intent, original_message="What is CAIRN?")
+        assert result.domain == Domain.PROJECTS
+
+    def test_project_routing_is_case_insensitive(self, router):
+        """Project name matching should be case-insensitive."""
+        queries = [
+            "What is CAIRN?",
+            "What is cairn?",
+            "What is Cairn?",
+            "UKRAINE project",
+            "ukraine project",
+        ]
+        for query in queries:
+            intent = Intent(topic="general", question_type=QuestionType.FACTUAL, confidence=0.7)
+            result = router.route(intent, original_message=query)
+            assert result.domain == Domain.PROJECTS, f"'{query}' should route to PROJECTS"
+
+    def test_non_project_still_routes_normally(self, router):
+        """Queries without project names should use normal routing."""
+        intent = Intent(
+            topic="skills",
+            question_type=QuestionType.FACTUAL,
+            confidence=0.9,
+        )
+        result = router.route(intent, original_message="What programming languages do you know?")
+        assert result.domain == Domain.PROFESSIONAL

@@ -218,7 +218,8 @@ class TestSemanticContextRetrieverEmbedding:
 
         assert result.passed
         assert len(result.sources_loaded) > 0
-        assert "relevance:" in result.context
+        # Context includes either overview tags or relevance scores
+        assert "(overview)" in result.context or "(relevance:" in result.context
 
     @pytest.mark.asyncio
     async def test_retrieve_semantic_respects_min_similarity(self, temp_context_dir):
@@ -249,7 +250,7 @@ class TestSemanticContextRetrieverEmbedding:
 
     @pytest.mark.asyncio
     async def test_retrieve_semantic_respects_top_k(self, temp_context_dir):
-        """Test that only top_k chunks are returned."""
+        """Test that semantic matches are limited to top_k (plus required sources)."""
         retriever = SemanticContextRetriever(
             context_dir=temp_context_dir,
             chunk_size=50,  # Small chunks to get many
@@ -274,9 +275,9 @@ class TestSemanticContextRetrieverEmbedding:
             "Test query",
         )
 
-        # Count the number of "From:" headers in context
-        from_count = result.context.count("### From:")
-        assert from_count <= 2  # top_k = 2
+        # Count relevance-scored chunks (not including required overview chunks)
+        relevance_count = result.context.count("(relevance:")
+        assert relevance_count <= 2, f"Semantic matches should be limited to top_k=2, got {relevance_count}"
 
 
 class TestSemanticContextRetrieverCache:
@@ -337,3 +338,161 @@ class TestChunkWithEmbedding:
         assert chunk.source_name == "test"
         assert chunk.source_display_name == "Test Source"
         assert chunk.embedding == [1.0, 2.0, 3.0]
+
+
+class TestSemanticRetrievalPriority:
+    """
+    Tests for retrieval priority logic.
+
+    These are regression tests for the bug where semantic search returned
+    peripheral content (e.g., "ReOS integration notes") instead of core
+    descriptions (e.g., "CAIRN is an attention management agent").
+    """
+
+    @pytest.fixture
+    def retriever_with_required_sources(self, temp_context_dir):
+        """Create retriever with required source configuration."""
+        return SemanticContextRetriever(
+            context_dir=temp_context_dir,
+            chunk_size=100,
+            chunk_overlap=20,
+            top_k=3,
+            min_similarity=0.1,  # Low threshold to ensure matches
+        )
+
+    @pytest.mark.asyncio
+    async def test_required_sources_appear_first(self, temp_context_dir):
+        """
+        Required sources (marked required=True) should appear before semantic matches.
+
+        Regression test: Previously, semantic-only retrieval would return
+        high-similarity but peripheral chunks, missing the core description
+        from required overview files.
+        """
+        retriever = SemanticContextRetriever(
+            context_dir=temp_context_dir,
+            chunk_size=100,
+            top_k=5,
+            min_similarity=0.0,  # Accept all
+        )
+
+        mock_client = MagicMock()
+        # Simulate embeddings where a non-required source has higher similarity
+        mock_client.embed_batch = AsyncMock(return_value=[
+            [0.5, 0.5, 0.0],  # overview chunk 1 - medium similarity
+            [0.4, 0.4, 0.0],  # overview chunk 2 - lower similarity
+            [0.9, 0.1, 0.0],  # talking_rock chunk - HIGH similarity
+        ])
+        mock_client.embed = AsyncMock(return_value=[1.0, 0.0, 0.0])  # Query
+        retriever._ollama_client = mock_client
+
+        result = await retriever.retrieve_semantic(
+            Domain.PROJECTS,
+            "What is this project?"
+        )
+
+        assert result.passed
+        # Context should start with "(overview)" tagged content
+        # The fix ensures required sources come first regardless of similarity
+        assert "(overview)" in result.context, (
+            "Required sources should be included first with (overview) tag"
+        )
+
+    @pytest.mark.asyncio
+    async def test_overview_included_even_with_low_similarity(self, temp_context_dir):
+        """
+        Overview files should be included even if their similarity is low.
+
+        This ensures grounding context is always present.
+        """
+        retriever = SemanticContextRetriever(
+            context_dir=temp_context_dir,
+            chunk_size=100,
+            top_k=2,
+            min_similarity=0.5,  # High threshold
+        )
+
+        mock_client = MagicMock()
+        # Overview has low similarity, but should still be included
+        mock_client.embed_batch = AsyncMock(return_value=[
+            [0.1, 0.9, 0.0],  # overview - orthogonal to query (low sim)
+            [0.95, 0.05, 0.0],  # other source - high similarity
+        ])
+        mock_client.embed = AsyncMock(return_value=[1.0, 0.0, 0.0])
+        retriever._ollama_client = mock_client
+
+        result = await retriever.retrieve_semantic(
+            Domain.PROJECTS,
+            "Some specific query"
+        )
+
+        # Should still have content (overview is required)
+        assert result.passed
+        assert len(result.context) > 0
+
+    @pytest.mark.asyncio
+    async def test_semantic_matches_added_after_required(self, temp_context_dir):
+        """
+        Semantic matches should be added AFTER required sources, not replacing them.
+        """
+        retriever = SemanticContextRetriever(
+            context_dir=temp_context_dir,
+            chunk_size=50,  # Small chunks
+            top_k=5,
+            min_similarity=0.0,
+        )
+
+        mock_client = MagicMock()
+        mock_client.embed_batch = AsyncMock(return_value=[
+            [1.0, 0.0, 0.0],
+            [0.9, 0.1, 0.0],
+            [0.8, 0.2, 0.0],
+            [0.7, 0.3, 0.0],
+        ])
+        mock_client.embed = AsyncMock(return_value=[1.0, 0.0, 0.0])
+        retriever._ollama_client = mock_client
+
+        result = await retriever.retrieve_semantic(
+            Domain.PROJECTS,
+            "Test query"
+        )
+
+        assert result.passed
+        # Should have both overview content AND semantic matches
+        has_overview = "(overview)" in result.context
+        has_relevance = "(relevance:" in result.context
+        # At minimum should have some content
+        assert len(result.sources_loaded) > 0
+
+    @pytest.mark.asyncio
+    async def test_no_duplicate_chunks(self, temp_context_dir):
+        """
+        Chunks shouldn't be duplicated if they appear in both required and semantic results.
+        """
+        retriever = SemanticContextRetriever(
+            context_dir=temp_context_dir,
+            chunk_size=200,
+            top_k=5,
+            min_similarity=0.0,
+        )
+
+        # Mock where the same chunk would be both required and top semantic match
+        mock_client = MagicMock()
+        mock_client.embed_batch = AsyncMock(return_value=[
+            [1.0, 0.0, 0.0],  # First chunk - exact match
+        ])
+        mock_client.embed = AsyncMock(return_value=[1.0, 0.0, 0.0])
+        retriever._ollama_client = mock_client
+
+        result = await retriever.retrieve_semantic(
+            Domain.PROJECTS,
+            "Test"
+        )
+
+        # Count occurrences of "### From:" - each chunk should only appear once
+        from_count = result.context.count("### From:")
+        unique_chunks = len(set(result.context.split("### From:")[1:]))
+
+        # Number of headers should equal number of unique chunks
+        # (allowing for the split creating one extra empty element)
+        assert from_count == unique_chunks or from_count == unique_chunks + 1

@@ -243,6 +243,58 @@ def context_retriever(temp_storage_dir: Path):
 
 
 @pytest.fixture
+def real_context_dir() -> Path | None:
+    """
+    Get the path to real context files for integration testing.
+
+    Returns None if context directory doesn't exist.
+    """
+    # Try to find the real context directory relative to tests
+    possible_paths = [
+        Path(__file__).parent.parent / "context",  # portfolio_chat/context
+        Path(__file__).parent.parent.parent / "context",  # workspace/context
+    ]
+
+    for path in possible_paths:
+        if path.exists() and (path / "projects").exists():
+            return path
+
+    return None
+
+
+@pytest.fixture
+def real_context_retriever(real_context_dir: Path | None):
+    """
+    Create a context retriever using real context files.
+
+    Skips test if real context not available.
+    """
+    if real_context_dir is None:
+        pytest.skip("Real context directory not found")
+
+    from portfolio_chat.pipeline.layer5_context import Layer5ContextRetriever
+    return Layer5ContextRetriever(context_dir=real_context_dir)
+
+
+@pytest.fixture
+def real_semantic_retriever(real_context_dir: Path | None):
+    """
+    Create a semantic retriever using real context files.
+
+    Skips test if real context not available.
+    """
+    if real_context_dir is None:
+        pytest.skip("Real context directory not found")
+
+    from portfolio_chat.pipeline.layer5_context import SemanticContextRetriever
+    return SemanticContextRetriever(
+        context_dir=real_context_dir,
+        top_k=5,
+        min_similarity=0.3,
+    )
+
+
+@pytest.fixture
 def generator(mock_ollama_client):
     """Create a response generator with mock client."""
     from portfolio_chat.pipeline.layer6_generate import Layer6Generator

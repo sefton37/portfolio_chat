@@ -24,7 +24,7 @@ from portfolio_chat.pipeline.layer0_network import Layer0NetworkGateway, Layer0S
 from portfolio_chat.pipeline.layer1_sanitize import Layer1Sanitizer, Layer1Status
 from portfolio_chat.pipeline.layer2_combined import Layer2CombinedClassifier, CombinedStatus
 from portfolio_chat.pipeline.layer4_route import Domain, Layer4Router
-from portfolio_chat.pipeline.layer5_context import Layer5ContextRetriever, Layer5Status
+from portfolio_chat.pipeline.layer5_context import Layer5ContextRetriever, Layer5Status, SemanticContextRetriever
 from portfolio_chat.pipeline.layer6_generate import Layer6Generator, Layer6Status
 from portfolio_chat.pipeline.layer8_fast import Layer8FastChecker
 from portfolio_chat.pipeline.layer9_deliver import ChatResponse, Layer9Deliverer
@@ -87,7 +87,12 @@ class FastPipelineOrchestrator:
         self.layer1 = Layer1Sanitizer()
         self.layer2_combined = Layer2CombinedClassifier(client=self.ollama_client)
         self.layer4 = Layer4Router()
-        self.layer5 = Layer5ContextRetriever()
+        # Use semantic retrieval if enabled
+        self.layer5: Layer5ContextRetriever | SemanticContextRetriever
+        if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED:
+            self.layer5 = SemanticContextRetriever()
+        else:
+            self.layer5 = Layer5ContextRetriever()
         self.layer6 = Layer6Generator(client=self.ollama_client, enable_tools=True)
         self.layer8_fast = Layer8FastChecker()
         self.layer9 = Layer9Deliverer()
@@ -216,6 +221,34 @@ class FastPipelineOrchestrator:
                 from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
                 intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
 
+            # Fast path for greetings - no need for full pipeline
+            from portfolio_chat.pipeline.layer3_intent import QuestionType
+            if intent.question_type == QuestionType.GREETING or intent.topic == "greeting":
+                greeting_response = (
+                    "Hello! I'm here to answer questions about Kellogg's work, skills, "
+                    "and projects. What would you like to know?"
+                )
+                if self.analytics_storage:
+                    await self.analytics_storage.log_message(
+                        conversation_id=conv_id,
+                        role="assistant",
+                        content=greeting_response,
+                        ip_hash=ip_hash,
+                        domain="meta",
+                        response_time_ms=(time.time() - start_time) * 1000,
+                    )
+                await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
+                await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting_response)
+                return self.layer9.deliver_success(
+                    response=greeting_response,
+                    domain=Domain.META,
+                    request_id=request_id,
+                    conversation_id=conv_id,
+                    start_time=start_time,
+                    ip_hash=ip_hash,
+                    layer_timings=metrics.layer_timings,
+                )
+
             # ===== LAYER 4: Domain Routing =====
             l4_start = time.time()
             l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
@@ -224,7 +257,14 @@ class FastPipelineOrchestrator:
 
             # ===== LAYER 5: Context Retrieval =====
             l5_start = time.time()
-            l5_result = self.layer5.retrieve(domain=l4_result.domain, _intent=intent)
+            if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED and isinstance(self.layer5, SemanticContextRetriever):
+                l5_result = await self.layer5.retrieve_semantic(
+                    domain=l4_result.domain,
+                    message=sanitized_message,
+                    intent=intent,
+                )
+            else:
+                l5_result = self.layer5.retrieve(domain=l4_result.domain, _intent=intent)
             metrics.layer_timings["L5"] = time.time() - l5_start
 
             # Check for insufficient context
@@ -422,7 +462,14 @@ class FastPipelineOrchestrator:
 
             # Routing (L4) and Context (L5)
             l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
-            l5_result = self.layer5.retrieve(domain=l4_result.domain, _intent=intent)
+            if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED and isinstance(self.layer5, SemanticContextRetriever):
+                l5_result = await self.layer5.retrieve_semantic(
+                    domain=l4_result.domain,
+                    message=sanitized_message,
+                    intent=intent,
+                )
+            else:
+                l5_result = self.layer5.retrieve(domain=l4_result.domain, _intent=intent)
 
             if l5_result.context_quality < 0.4:
                 yield "I don't have detailed information about that topic."

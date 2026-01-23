@@ -621,6 +621,7 @@ class AsyncOllamaClient:
         text: str,
         model: str | None = None,
         timeout: float = 30.0,
+        keep_alive: str = "30m",
     ) -> list[float]:
         """
         Generate embeddings for text.
@@ -629,6 +630,7 @@ class AsyncOllamaClient:
             text: Text to embed.
             model: Embedding model to use (defaults to nomic-embed-text).
             timeout: Request timeout in seconds.
+            keep_alive: How long to keep model loaded (e.g., "30m", "1h", "-1" for forever).
 
         Returns:
             List of floats representing the embedding vector.
@@ -646,6 +648,7 @@ class AsyncOllamaClient:
         payload = {
             "model": embed_model,
             "prompt": text,
+            "keep_alive": keep_alive,
         }
 
         try:
@@ -687,6 +690,7 @@ class AsyncOllamaClient:
         texts: list[str],
         model: str | None = None,
         timeout: float = 60.0,
+        keep_alive: str = "30m",
     ) -> list[list[float]]:
         """
         Generate embeddings for multiple texts.
@@ -695,12 +699,13 @@ class AsyncOllamaClient:
             texts: List of texts to embed.
             model: Embedding model to use.
             timeout: Request timeout per embedding.
+            keep_alive: How long to keep model loaded.
 
         Returns:
             List of embedding vectors.
         """
         embeddings = []
         for text in texts:
-            embedding = await self.embed(text, model=model, timeout=timeout)
+            embedding = await self.embed(text, model=model, timeout=timeout, keep_alive=keep_alive)
             embeddings.append(embedding)
         return embeddings

@@ -32,6 +32,7 @@ from fastapi.responses import StreamingResponse
 
 from portfolio_chat.admin.router import admin_router
 from portfolio_chat.config import ANALYTICS, PIPELINE, SECURITY, SERVER
+from portfolio_chat.pipeline.layer5_context import SemanticContextRetriever
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator_fast import FastPipelineOrchestrator
 from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
@@ -213,6 +214,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("Ollama connection verified")
     else:
         logger.warning(f"Ollama not available: {health.get('ollama_error', 'unknown')}")
+
+    # Pre-warm semantic embeddings if enabled
+    if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED and isinstance(orchestrator.layer5, SemanticContextRetriever):
+        logger.info("Pre-warming semantic embeddings...")
+        await orchestrator.layer5.prewarm_all_domains()
+        logger.info("Semantic embeddings ready")
 
     logger.info(f"Contact storage: {contact_storage.storage_dir}")
     logger.info(f"Server ready on {SERVER.HOST}:{SERVER.PORT}")

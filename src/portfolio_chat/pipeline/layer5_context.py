@@ -7,12 +7,14 @@ Uses registry pattern with static file lookup (no RAG).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from portfolio_chat.config import PATHS, SECURITY
+from portfolio_chat.config import MODELS, PATHS, PIPELINE, SECURITY
 from portfolio_chat.pipeline.layer3_intent import Intent
 from portfolio_chat.pipeline.layer4_route import Domain
 
@@ -422,6 +424,457 @@ class Layer5ContextRetriever:
         for domain, sources in self._domain_sources.items():
             result[domain.value] = [s.name for s in sources]
         return result
+
+
+def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    """
+    Compute cosine similarity between two vectors.
+
+    Returns value between -1 and 1, where 1 means identical direction.
+    """
+    if len(vec_a) != len(vec_b):
+        return 0.0
+
+    dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = sum(a * a for a in vec_a) ** 0.5
+    norm_b = sum(b * b for b in vec_b) ** 0.5
+
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
+    return dot_product / (norm_a * norm_b)
+
+
+@dataclass
+class ChunkWithEmbedding:
+    """A chunk of context with its embedding and metadata."""
+
+    text: str
+    source_name: str
+    source_display_name: str
+    embedding: list[float]
+
+
+class SemanticContextRetriever(Layer5ContextRetriever):
+    """
+    Context retriever with semantic ranking.
+
+    Extends Layer5ContextRetriever to add semantic search via embeddings.
+    Chunks context files and ranks them by similarity to the user query.
+
+    Optimizations:
+    - Disk persistence: Embeddings cached to JSON files
+    - File change detection: Re-embeds only when source files change
+    - Pre-warming: Can embed all domains at startup
+    """
+
+    CACHE_VERSION = "v1"  # Bump to invalidate all caches
+
+    def __init__(
+        self,
+        context_dir: Path | None = None,
+        max_context_length: int | None = None,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
+        top_k: int | None = None,
+        min_similarity: float | None = None,
+        cache_dir: Path | None = None,
+    ) -> None:
+        """
+        Initialize semantic context retriever.
+
+        Args:
+            context_dir: Directory containing context files.
+            max_context_length: Maximum total context length.
+            chunk_size: Target size for each chunk (chars).
+            chunk_overlap: Overlap between chunks (chars).
+            top_k: Number of top chunks to return.
+            min_similarity: Minimum similarity threshold.
+            cache_dir: Directory for embedding cache files.
+        """
+        super().__init__(context_dir, max_context_length)
+        self.chunk_size = chunk_size or PIPELINE.SEMANTIC_CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap or PIPELINE.SEMANTIC_CHUNK_OVERLAP
+        self.top_k = top_k or PIPELINE.SEMANTIC_TOP_K_CHUNKS
+        self.min_similarity = min_similarity or PIPELINE.SEMANTIC_MIN_SIMILARITY
+        self.cache_dir = cache_dir or PATHS.CACHE_DIR
+
+        # Ensure cache directory exists
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # In-memory cache: domain -> list of ChunkWithEmbedding
+        self._chunk_cache: dict[Domain, list[ChunkWithEmbedding]] = {}
+        self._ollama_client: object | None = None  # Lazy-loaded
+
+    def _get_ollama_client(self) -> object:
+        """Get or create the Ollama client (lazy loading to avoid circular imports)."""
+        if self._ollama_client is None:
+            from portfolio_chat.models.ollama_client import AsyncOllamaClient
+            self._ollama_client = AsyncOllamaClient()
+        return self._ollama_client
+
+    def _get_cache_path(self, domain: Domain) -> Path:
+        """Get the cache file path for a domain."""
+        return self.cache_dir / f"embeddings_{domain.value}_{self.CACHE_VERSION}.json"
+
+    def _compute_sources_hash(self, domain: Domain) -> str:
+        """
+        Compute a hash of all source files for a domain.
+
+        Used to detect when source files have changed and cache needs refresh.
+        """
+        hasher = hashlib.md5()
+        for source in sorted(self._get_sources_for_domain(domain), key=lambda s: s.name):
+            file_path = self.context_dir / source.file_pattern
+            if file_path.exists():
+                # Include file path, size, and mtime in hash
+                stat = file_path.stat()
+                hasher.update(f"{source.file_pattern}:{stat.st_size}:{stat.st_mtime}".encode())
+        return hasher.hexdigest()
+
+    def _load_cache_from_disk(self, domain: Domain) -> list[ChunkWithEmbedding] | None:
+        """
+        Load cached embeddings from disk if valid.
+
+        Returns None if cache doesn't exist or is stale.
+        """
+        cache_path = self._get_cache_path(domain)
+        if not cache_path.exists():
+            return None
+
+        try:
+            with open(cache_path) as f:
+                data = json.load(f)
+
+            # Verify cache is still valid
+            if data.get("sources_hash") != self._compute_sources_hash(domain):
+                logger.info(f"Cache stale for {domain.value}, source files changed")
+                return None
+
+            # Reconstruct ChunkWithEmbedding objects
+            chunks = [
+                ChunkWithEmbedding(
+                    text=c["text"],
+                    source_name=c["source_name"],
+                    source_display_name=c["source_display_name"],
+                    embedding=c["embedding"],
+                )
+                for c in data.get("chunks", [])
+            ]
+            logger.info(f"Loaded {len(chunks)} cached embeddings for {domain.value}")
+            return chunks
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning(f"Failed to load cache for {domain.value}: {e}")
+            return None
+
+    def _save_cache_to_disk(self, domain: Domain, chunks: list[ChunkWithEmbedding]) -> None:
+        """Save embeddings to disk cache."""
+        cache_path = self._get_cache_path(domain)
+        try:
+            data = {
+                "sources_hash": self._compute_sources_hash(domain),
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+                "chunks": [
+                    {
+                        "text": c.text,
+                        "source_name": c.source_name,
+                        "source_display_name": c.source_display_name,
+                        "embedding": c.embedding,
+                    }
+                    for c in chunks
+                ],
+            }
+            with open(cache_path, "w") as f:
+                json.dump(data, f)
+            logger.info(f"Saved {len(chunks)} embeddings to cache for {domain.value}")
+        except OSError as e:
+            logger.warning(f"Failed to save cache for {domain.value}: {e}")
+
+    def _chunk_content(
+        self,
+        content: str,
+        source_name: str,
+        source_display_name: str,
+    ) -> list[tuple[str, str, str]]:
+        """
+        Split content into overlapping chunks with source attribution.
+
+        Args:
+            content: The content to chunk.
+            source_name: Internal source identifier.
+            source_display_name: Human-readable source name.
+
+        Returns:
+            List of (chunk_text, source_name, display_name) tuples.
+        """
+        if len(content) <= self.chunk_size:
+            return [(content.strip(), source_name, source_display_name)] if content.strip() else []
+
+        chunks = []
+        words = content.split()
+        current_chunk: list[str] = []
+        current_length = 0
+
+        for word in words:
+            current_chunk.append(word)
+            current_length += len(word) + 1
+
+            if current_length >= self.chunk_size:
+                chunk_text = " ".join(current_chunk)
+                chunks.append((chunk_text, source_name, source_display_name))
+
+                # Overlap: keep words that roughly equal overlap size
+                overlap_chars = 0
+                overlap_words: list[str] = []
+                for w in reversed(current_chunk):
+                    overlap_chars += len(w) + 1
+                    overlap_words.insert(0, w)
+                    if overlap_chars >= self.chunk_overlap:
+                        break
+
+                current_chunk = overlap_words
+                current_length = sum(len(w) + 1 for w in current_chunk)
+
+        # Add remaining
+        if current_chunk:
+            chunk_text = " ".join(current_chunk)
+            if chunk_text.strip():
+                chunks.append((chunk_text, source_name, source_display_name))
+
+        return chunks
+
+    async def _ensure_chunks_embedded(self, domain: Domain) -> list[ChunkWithEmbedding]:
+        """
+        Embed and cache all chunks for a domain (lazy loading).
+
+        Checks in order:
+        1. In-memory cache
+        2. Disk cache (if valid)
+        3. Compute fresh embeddings
+
+        Args:
+            domain: The domain to load chunks for.
+
+        Returns:
+            List of chunks with embeddings.
+        """
+        # Check in-memory cache first
+        if domain in self._chunk_cache:
+            return self._chunk_cache[domain]
+
+        # Try loading from disk cache
+        cached = self._load_cache_from_disk(domain)
+        if cached is not None:
+            self._chunk_cache[domain] = cached
+            return cached
+
+        # Need to compute embeddings
+        client = self._get_ollama_client()
+        all_chunks: list[tuple[str, str, str]] = []
+
+        # Load and chunk all sources for this domain
+        for source in self._get_sources_for_domain(domain):
+            content = self._load_file(source)
+            if content is None:
+                continue
+
+            chunks = self._chunk_content(content, source.name, source.display_name)
+            all_chunks.extend(chunks)
+
+        if not all_chunks:
+            self._chunk_cache[domain] = []
+            return []
+
+        # Embed all chunks
+        logger.info(f"Computing embeddings for {len(all_chunks)} chunks in {domain.value}")
+        texts = [c[0] for c in all_chunks]
+
+        try:
+            embeddings = await client.embed_batch(texts, model=MODELS.EMBEDDING_MODEL)
+        except Exception as e:
+            logger.error(f"Failed to embed chunks for {domain.value}: {e}")
+            self._chunk_cache[domain] = []
+            return []
+
+        # Create chunk objects with embeddings
+        embedded_chunks = [
+            ChunkWithEmbedding(
+                text=chunk[0],
+                source_name=chunk[1],
+                source_display_name=chunk[2],
+                embedding=embedding,
+            )
+            for chunk, embedding in zip(all_chunks, embeddings)
+        ]
+
+        # Save to both caches
+        self._chunk_cache[domain] = embedded_chunks
+        self._save_cache_to_disk(domain, embedded_chunks)
+
+        logger.info(f"Cached {len(embedded_chunks)} embeddings for {domain.value}")
+        return embedded_chunks
+
+    async def prewarm_all_domains(self) -> None:
+        """
+        Pre-warm embeddings for all domains.
+
+        Call this at server startup to avoid cold-start latency on first query.
+        Also warms up the embedding model with a dummy query.
+        """
+        for domain in Domain:
+            if domain == Domain.OUT_OF_SCOPE:
+                continue
+            try:
+                await self._ensure_chunks_embedded(domain)
+            except Exception as e:
+                logger.error(f"Failed to prewarm {domain.value}: {e}")
+
+        # Warm up the embedding model with a dummy query
+        # This keeps the model loaded in memory for faster first-query response
+        try:
+            client = self._get_ollama_client()
+            await client.embed("warmup query", model=MODELS.EMBEDDING_MODEL)
+            logger.debug("Embedding model warmed up")
+        except Exception as e:
+            logger.warning(f"Failed to warm up embedding model: {e}")
+
+    async def retrieve_semantic(
+        self,
+        domain: Domain,
+        message: str,
+        intent: Intent | None = None,
+    ) -> Layer5Result:
+        """
+        Retrieve context ranked by semantic similarity to message.
+
+        Args:
+            domain: The target domain.
+            message: The user's message to match against.
+            intent: Optional intent (currently unused but kept for interface).
+
+        Returns:
+            Layer5Result with semantically ranked context.
+        """
+        # Handle out of scope
+        if domain == Domain.OUT_OF_SCOPE:
+            return Layer5Result(
+                status=Layer5Status.NO_CONTEXT,
+                passed=True,
+                context="",
+                sources_loaded=[],
+                sources_missing=[],
+                total_length=0,
+            )
+
+        # Get embedded chunks for domain
+        chunks = await self._ensure_chunks_embedded(domain)
+
+        if not chunks:
+            # Fall back to base retrieval if embedding failed
+            logger.warning(f"No chunks available for {domain.value}, falling back to base retrieval")
+            return self.retrieve(domain, intent)
+
+        # Embed the user message
+        client = self._get_ollama_client()
+        try:
+            query_embedding = await client.embed(message, model=MODELS.EMBEDDING_MODEL)
+        except Exception as e:
+            logger.error(f"Failed to embed query: {e}")
+            return self.retrieve(domain, intent)
+
+        # Compute similarity for all chunks
+        scored_chunks: list[tuple[ChunkWithEmbedding, float]] = []
+        for chunk in chunks:
+            similarity = cosine_similarity(query_embedding, chunk.embedding)
+            if similarity >= self.min_similarity:
+                scored_chunks.append((chunk, similarity))
+
+        # Sort by similarity descending and take top K
+        scored_chunks.sort(key=lambda x: x[1], reverse=True)
+        top_chunks = scored_chunks[: self.top_k]
+
+        if not top_chunks:
+            # No chunks above threshold - use base retrieval
+            logger.debug(f"No chunks above similarity threshold for query")
+            return self.retrieve(domain, intent)
+
+        # Build context from top chunks
+        context_parts: list[str] = []
+        sources_loaded: set[str] = set()
+        total_length = 0
+
+        for chunk, similarity in top_chunks:
+            if total_length >= self.max_context_length:
+                break
+
+            # Format with source attribution and similarity
+            chunk_header = f"### From: {chunk.source_display_name} (relevance: {similarity:.2f})"
+            chunk_content = f"{chunk_header}\n{chunk.text}"
+
+            remaining = self.max_context_length - total_length
+            if len(chunk_content) > remaining:
+                chunk_content = chunk_content[:remaining] + "\n[Truncated]"
+
+            context_parts.append(chunk_content)
+            sources_loaded.add(chunk.source_name)
+            total_length += len(chunk_content)
+
+        # Build final context
+        context = "## Most Relevant Context\n\n" + "\n\n".join(context_parts)
+
+        # Determine missing sources (sources in domain but not in results)
+        all_source_names = {s.name for s in self._get_sources_for_domain(domain)}
+        sources_missing = list(all_source_names - sources_loaded)
+
+        # Calculate context quality based on similarity scores
+        if top_chunks:
+            avg_similarity = sum(sim for _, sim in top_chunks) / len(top_chunks)
+            top_similarity = top_chunks[0][1]
+            # Quality is weighted average of top and average similarity
+            context_quality = round(0.6 * top_similarity + 0.4 * avg_similarity, 2)
+        else:
+            context_quality = 0.0
+
+        # Check for placeholder content
+        has_placeholder = self._is_placeholder_content(context)
+        if has_placeholder:
+            context_quality = min(context_quality, 0.2)
+
+        # Determine status
+        if not context_parts:
+            status = Layer5Status.NO_CONTEXT
+        elif has_placeholder or context_quality < 0.4:
+            status = Layer5Status.INSUFFICIENT
+        elif len(sources_loaded) < len(all_source_names) // 2:
+            status = Layer5Status.PARTIAL
+        else:
+            status = Layer5Status.SUCCESS
+
+        return Layer5Result(
+            status=status,
+            passed=True,
+            context=context,
+            sources_loaded=list(sources_loaded),
+            sources_missing=sources_missing,
+            total_length=len(context),
+            is_placeholder=has_placeholder,
+            context_quality=context_quality,
+        )
+
+    def clear_cache(self, domain: Domain | None = None) -> None:
+        """
+        Clear the embedding cache.
+
+        Args:
+            domain: If provided, only clear cache for this domain.
+                   If None, clear all caches.
+        """
+        if domain is not None:
+            self._chunk_cache.pop(domain, None)
+        else:
+            self._chunk_cache.clear()
 
 
 # Module-level retriever instance

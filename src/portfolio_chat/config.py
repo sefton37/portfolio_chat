@@ -127,6 +127,13 @@ class PipelineConfig:
     # Enable streaming responses (progressive output)
     ENABLE_STREAMING: bool = _env_str("ENABLE_STREAMING", "true").lower() == "true"
 
+    # Semantic retrieval settings (RAG for context)
+    SEMANTIC_RETRIEVAL_ENABLED: bool = _env_str("SEMANTIC_RETRIEVAL_ENABLED", "true").lower() == "true"
+    SEMANTIC_TOP_K_CHUNKS: int = _env_int("SEMANTIC_TOP_K_CHUNKS", 8)
+    SEMANTIC_CHUNK_SIZE: int = _env_int("SEMANTIC_CHUNK_SIZE", 500)
+    SEMANTIC_CHUNK_OVERLAP: int = _env_int("SEMANTIC_CHUNK_OVERLAP", 100)
+    SEMANTIC_MIN_SIMILARITY: float = _env_float("SEMANTIC_MIN_SIMILARITY", 0.3)
+
 
 @dataclass(frozen=True)
 class ServerConfig:
@@ -168,6 +175,7 @@ class PathConfig:
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     CONTEXT_DIR: Path = BASE_DIR / "context"
     PROMPTS_DIR: Path = BASE_DIR / "prompts"
+    CACHE_DIR: Path = BASE_DIR / "data" / "cache"
 
 
 @dataclass(frozen=True)

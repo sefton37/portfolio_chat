@@ -197,7 +197,7 @@ DOMAIN: {domain}
             "IMPORTANT: If the visitor wants to SEND a message to Kellogg (uses phrases like "
             "'send a message', 'tell him', 'let him know', 'leave a message', 'contact him'), "
             "you MUST use the save_message_for_kellogg tool. Do NOT just provide contact info. "
-            "Output the ```tool_call``` block as described in your system instructions."
+            "Output the tool call using the ```tool_call``` format shown above."
         )
 
         return "\n".join(parts)

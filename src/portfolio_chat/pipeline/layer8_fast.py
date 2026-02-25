@@ -37,14 +37,15 @@ class FastSafetyResult:
 # Patterns that indicate prompt leakage
 PROMPT_LEAKAGE_PATTERNS = [
     r"system prompt",
+    r"system instructions",
     r"my instructions are",
     r"i was told to",
     r"i am programmed to",
     r"my programming says",
     r"my rules are",
     r"<<<.*>>>",  # Spotlighting markers
-    r"CONTEXT ABOUT KEL",
-    r"CURRENT QUESTION:",
+    r"CONTEXT ABOUT KEL \(cite",  # Specific prompt marker format
+    r"CURRENT QUESTION:\s*<<<",  # Specific prompt marker with spotlight
     r"Layer \d+ ",  # Space after to avoid matching "Layer 1" in other contexts
     r"inference pipeline",  # More specific - not "data pipeline"
     r"jailbreak attempt",

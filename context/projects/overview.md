@@ -4,28 +4,50 @@ Kellogg Brengel's projects demonstrate his approach to building software: sovere
 
 ## Featured Projects
 
-### Talking Rock
-**Local-First AI Assistant Framework**
+### Talking Rock Ecosystem
+**Local-First AI Tools for Personal Sovereignty**
 
-A three-agent AI system designed to run on consumer hardware (8GB RAM, no GPU required). Embodies Kellogg's approach to building helpful tools - AI that serves without coercing, operates through invitation rather than extraction.
+A family of AI tools designed to run entirely on consumer hardware. Embodies Kellogg's core philosophy: AI that serves without coercing, operates through invitation rather than extraction, and proves that architecture multiplies capability.
 
-- **CAIRN**: Attention management agent for life organization
-- **ReOS**: Natural language Linux system control
-- **RIVA**: Code verification engine (frozen pending hardware evolution)
+**The ecosystem:**
+- **CAIRN** — Personal attention minder. Helps you see yourself clearly without guilt-tripping. 2,033+ tests, full conversation lifecycle with memory extraction. The heart of Talking Rock.
+- **Lithium** — Android notification manager for neurodivergent users. Kotlin + Compose, SQLCipher encrypted, MVP verified on Pixel.
+- **Helm** — Mobile web UI for Cairn. Node.js thin proxy, TLS, PAM auth.
+- **ReOS** — Natural language Linux system control. Safe, auditable shell commands.
+- **RIVA** — Agent orchestrator for project management (in development).
+- **NoLang** — Programming language designed for LLM generation, not human authorship. Rust.
+- **talkingrock-core** — Shared infrastructure for all members.
 
-Key insight: Local inference is essentially free after model download, enabling verification passes that cloud services can't afford at scale.
+Key insight: Local inference is essentially free after model download, enabling verification passes that cloud services can't afford at scale. 8B parameter models on 16GB RAM outperform 70B models used naively when paired with structured verification.
 
-[Repository](https://github.com/sefton37/talking_rock)
+[Repository](https://github.com/sefton37/cairn)
+
+### Sieve & Rogue Routine
+**News Intelligence Pipeline**
+
+Sieve transforms raw news into decision-ready intelligence using AI analysis and a 7-dimension relevance scoring system. Articles are scored across attention economy, data sovereignty, power consolidation, cooperation, fear/trust, democratization, and systemic design dimensions.
+
+Rogue Routine (brengel.com) publishes curated analysis from Sieve — a static Hugo site that publishes when patterns emerge, never on a schedule. The pipeline demonstrates intelligence analysis tradecraft applied to open-source news monitoring.
+
+Key philosophy: Exchange compute time (cheap, local) for attention time (expensive, personal). Never optimize for engagement.
+
+### Sentinel
+**Market Manipulation Detection**
+
+FastAPI + React application that makes predatory short-selling campaigns visible through evidence. Every assessment traces to specific SEC filings, specific claims, specific data. Manipulation scoring weights: distortion 40%, timing 30%, coordination 20%, fundamentals 10%.
+
+Demonstrates evidence-based analysis with local-first sovereignty. Legitimate short sellers are respected — the target is manipulation, not disagreement.
 
 ### Portfolio Website & Chat
 **kellogg.brengel.com**
 
-Self-hosted portfolio site demonstrating "the medium is the message" - the site's construction proves the technical depth it claims to represent.
+Self-hosted portfolio site demonstrating "the medium is the message" — the site's construction proves the technical depth it claims to represent.
 
 - Astro static site with Tailwind CSS
-- Self-hosted on hardened DigitalOcean VPS (~$6/month)
-- 9-layer security pipeline for AI chat
+- Self-hosted on hardened VPS
+- 9-layer zero-trust security pipeline for AI chat
 - Cloudflare Tunnel integration (zero open ports)
+- Local LLM inference via Ollama (no cloud AI)
 
 Philosophy: Infrastructure as resume. View source encouraged.
 
@@ -81,7 +103,7 @@ Security isn't a feature, it's a structural commitment:
 
 ### Thoughtful Constraints
 Choosing appropriate tools over powerful tools:
-- Small models when they suffice
+- Small models when they suffice (8B outperforms naive 70B with the right architecture)
 - Static sites over dynamic when possible
 - Simplicity over premature abstraction
 
@@ -95,11 +117,11 @@ Code as communication:
 
 Kellogg's projects follow a consistent methodology:
 
-1. **Intent** - Establish clear, verifiable objectives
-2. **Contract** - Define scope, constraints, success criteria
-3. **Decompose** - Break into verifiable components
-4. **Build** - Develop with transparency built in
-5. **Verify** - Test against intent at each step
-6. **Integrate** - Assemble only when verification confirms alignment
+1. **Intent** — Establish clear, verifiable objectives
+2. **Contract** — Define scope, constraints, success criteria
+3. **Decompose** — Break into verifiable components
+4. **Build** — Develop with transparency built in
+5. **Verify** — Test against intent at each step
+6. **Integrate** — Assemble only when verification confirms alignment
 
 This produces not just solutions but documentation of *why* decisions were made.

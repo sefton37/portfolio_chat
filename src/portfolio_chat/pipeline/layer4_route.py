@@ -98,6 +98,8 @@ class Layer4Router:
         "chat_system": Domain.META,
         "about_chat": Domain.META,
         "how_does_this_work": Domain.META,
+        # Out of scope
+        "out_of_scope": Domain.OUT_OF_SCOPE,
     }
 
     # Keywords that suggest specific domains
@@ -144,10 +146,29 @@ class Layer4Router:
         "tell kel": Domain.LINKEDIN,
         "leave a message": Domain.LINKEDIN,
         "send": Domain.LINKEDIN,
+        "impressive": Domain.PROFESSIONAL,
+        "experience": Domain.PROFESSIONAL,
+        "background": Domain.PROFESSIONAL,
+        "what does he do": Domain.PROFESSIONAL,
+        "what does this person do": Domain.PROFESSIONAL,
+        "get in touch": Domain.LINKEDIN,
         "chat": Domain.META,
-        "system": Domain.META,
-        "ai": Domain.META,
+        "chatbot": Domain.META,
         "bot": Domain.META,
+        "this ai": Domain.META,
+        "this system": Domain.META,
+        "what is this": Domain.META,
+        "how does this": Domain.META,
+        "what do you do": Domain.META,
+        # Project-specific keywords
+        "lithium": Domain.PROJECTS,
+        "helm": Domain.PROJECTS,
+        "nolang": Domain.PROJECTS,
+        "sieve": Domain.PROJECTS,
+        "sentinel": Domain.PROJECTS,
+        "trcore": Domain.PROJECTS,
+        "local-first": Domain.PHILOSOPHY,
+        "local first": Domain.PHILOSOPHY,
     }
 
     def __init__(self) -> None:
@@ -178,12 +199,24 @@ class Layer4Router:
                 confidence=1.0,
             )
 
+        # Handle minimal/ambiguous input — very short messages with no clear intent
+        # e.g., "ok", "hm", "sure", "yeah", "hm ok" — route to META for a gentle prompt
+        if original_message and len(original_message.strip()) < 10 and intent.topic in ("general", "out_of_scope"):
+            return Layer4Result(
+                status=Layer4Status.ROUTED,
+                passed=True,
+                domain=Domain.META,
+                confidence=0.5,
+            )
+
         # FIRST: Check for specific project names (highest priority)
         # This must come before topic mapping to prevent misrouting
         # e.g., "What is CAIRN?" shouldn't go to META just because LLM classified it as "chat_system"
         PROJECT_NAMES = {
             "cairn", "reos", "riva", "talking rock", "talkingrock",
-            "ukraine", "osint", "inflation dashboard", "great minds", "roundtable"
+            "ukraine", "osint", "inflation dashboard", "great minds", "roundtable",
+            "lithium", "helm", "nolang", "sieve", "sentinel", "perfidy", "embermind",
+            "trcore", "talkingrock-core",
         }
         if original_message:
             message_lower = original_message.lower()
@@ -196,18 +229,8 @@ class Layer4Router:
                         confidence=0.9,
                     )
 
-        # Second, try direct topic mapping from intent
-        topic_lower = intent.topic.lower().replace(" ", "_")
-        if topic_lower in self.TOPIC_DOMAIN_MAP:
-            domain = self.TOPIC_DOMAIN_MAP[topic_lower]
-            return Layer4Result(
-                status=Layer4Status.ROUTED,
-                passed=True,
-                domain=domain,
-                confidence=intent.confidence,
-            )
-
-        # Try keyword hints from entities and original message
+        # Build keyword matches from entities and original message
+        # We do this BEFORE topic mapping so we can override weak LLM classifications
         keyword_matches: dict[Domain, int] = {}
 
         # Check entities
@@ -224,6 +247,36 @@ class Layer4Router:
                 if keyword in message_lower:
                     keyword_matches[domain] = keyword_matches.get(domain, 0) + 1
 
+        # Try direct topic mapping from intent — but treat out_of_scope as "soft"
+        # The small classifier model often over-classifies as out_of_scope.
+        # If keywords suggest an on-topic domain, override the classifier.
+        topic_lower = intent.topic.lower().replace(" ", "_")
+        if topic_lower in self.TOPIC_DOMAIN_MAP:
+            mapped_domain = self.TOPIC_DOMAIN_MAP[topic_lower]
+
+            if mapped_domain == Domain.OUT_OF_SCOPE and keyword_matches:
+                # Classifier said out_of_scope but keywords suggest otherwise — override
+                best_domain = max(keyword_matches, key=keyword_matches.get)  # type: ignore
+                match_count = keyword_matches[best_domain]
+                logger.info(
+                    f"Overriding out_of_scope classification: keywords suggest {best_domain.value} "
+                    f"({match_count} matches)"
+                )
+                return Layer4Result(
+                    status=Layer4Status.ROUTED,
+                    passed=True,
+                    domain=best_domain,
+                    confidence=min(0.7, 0.4 + (match_count * 0.1)),
+                )
+
+            return Layer4Result(
+                status=Layer4Status.ROUTED if mapped_domain != Domain.OUT_OF_SCOPE else Layer4Status.OUT_OF_SCOPE,
+                passed=True,
+                domain=mapped_domain,
+                confidence=intent.confidence,
+                error_message="I'm designed to answer questions about Kellogg's work and projects. For other topics, I'd recommend a general AI assistant." if mapped_domain == Domain.OUT_OF_SCOPE else None,
+            )
+
         # Use domain with most keyword matches
         if keyword_matches:
             best_domain = max(keyword_matches, key=keyword_matches.get)  # type: ignore
@@ -237,13 +290,16 @@ class Layer4Router:
                 confidence=confidence,
             )
 
-        # Fallback: if general topic and no hints, default to PROFESSIONAL
-        if intent.topic == "general" and intent.confidence >= 0.5:
+        # Fallback: if general topic and no keyword hints, default to PROFESSIONAL
+        # Most ambiguous questions on a portfolio site are professional in nature.
+        # Truly off-topic questions (weather, salary, cover letters) should be caught
+        # by the classifier's out_of_scope topic before reaching here.
+        if intent.topic == "general":
             return Layer4Result(
                 status=Layer4Status.ROUTED,
                 passed=True,
                 domain=Domain.PROFESSIONAL,
-                confidence=0.5,
+                confidence=0.4,
             )
 
         # No clear routing - mark as out of scope

@@ -15,7 +15,8 @@ Choose the most specific topic that applies:
 - **philosophy**: Problem-solving approach, values, working style, leadership philosophy
 - **contact**: How to reach Kellogg, LinkedIn, networking, professional connections
 - **chat_system**: Questions about this chat interface itself, how it works
-- **general**: General or unclear topics that don't fit above categories
+- **out_of_scope**: Questions unrelated to Kellogg — general knowledge, weather, news, personal advice, tasks for the user (writing cover letters, doing homework), salary/compensation, relocation, or treating this as a general-purpose AI assistant
+- **general**: Unclear topics that might relate to Kellogg but don't fit above categories
 
 ## Question Types
 

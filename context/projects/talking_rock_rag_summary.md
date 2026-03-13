@@ -1,175 +1,202 @@
-# Talking Rock: Technical Summary for RAG LLM
+# Talking Rock Ecosystem: Technical Summary for RAG LLM
 
 ## Core Philosophy & Mission
 
-Talking Rock embodies Kellogg's approach to building helpful tools—an AI assistant that serves without coercing, invites without interrupting, and operates through presence rather than extractive leverage. The tagline captures the essence: **"Don't rent a data center. Center your data around you."**
+> **Mission:** Center your data around you, not in a data center, so that your attention is centered on what you value. Local, zero trust AI. Small models and footprint, outsized impact and trust.
 
-This is Kellogg Brengel's demonstration that sovereign AI development is viable—not as theory but as working code. The project operates as a "lighthouse keeper" architecture: deliberately local-first, zero-trust, and transparent in its reasoning processes. It competes on **sovereignty rather than capability**, recognizing that users need proof of alignment more than they need raw power.
+> **Vision:** AI that partners with you and your values, not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.
+
+Talking Rock is Kellogg Brengel's ecosystem of sovereign AI tools — a demonstration that local-first, zero-trust AI development is not just philosophically superior but practically viable. The architecture embodies its philosophy: circuit breakers, approval gates, local-only operation, and auditable memory are structural commitments to non-coercion, not marketing claims.
+
+The tagline captures the essence: **"Don't rent a data center. Center your data around you."**
 
 ## The Strategic Economic Insight
 
 Talking Rock's competitive advantage emerges from a fundamental asymmetry: **cloud AI costs money per token, while local inference is essentially free after model download**. This means:
 
 - Cloud services minimize verification passes, repo analysis, and safety checks (each costs them money)
-- Talking Rock can verify every line of code, analyze every repository, check every command without cost concerns
-- The project can do things subscription services cannot afford at scale
+- Talking Rock can verify every intent, classify every request, check every action without cost concerns
+- Binary confidence, structured prompts, and multi-layer verification make 8B parameter models outperform 70B models used naively — because architecture multiplies capability
 
-This isn't about privacy alone (though users get that). It's about economics enabling a different kind of AI—one that prioritizes thoroughness over speed, sovereignty over convenience.
+This isn't about privacy alone (though users get that). It's about economics enabling a different kind of AI — one that prioritizes thoroughness over speed, sovereignty over convenience.
 
-## Three-Agent Architecture
+## The Ecosystem
 
-### CAIRN: The Attention Minder (Priority 1 - Active Development)
+Talking Rock is not a single application — it's a family of tools that share philosophy, infrastructure, and constraints. Every member is local-first, zero-trust, and privacy-preserving.
 
-**Target: 1B parameters** | **Purpose: Life organization without guilt**
+### CAIRN: The Personal Attention Minder (Root Project — Active)
 
-CAIRN implements a mindful presence for daily life—showing you the next thing, never everything. It organizes life through "The Play": Acts (life narratives, months to years) and Scenes (calendar events within acts). Just two levels, deliberately simple to remove the temptation to obscure responsibility in complexity.
+**Target: 8B parameter models on 16GB RAM (3B stretch goal)** | **2,033+ tests passing**
 
-**Key capabilities:**
-- Smart surfacing based on what's blocking other work, what has deadlines, what hasn't been touched
-- Calendar integration (Thunderbird with recurring events)
-- Contact knowledge graph
-- Waiting-on tracking (knows what you're blocked on)
-- Coherence Kernel for distraction filtering based on stated identity
+CAIRN is the heart of Talking Rock — a personal attention minder that helps you focus on what you value without overwhelming you. It's a mirror for self-reflection, not a surveillance tool. It never guilt-trips about unfinished work. All life data stays local.
 
-**The Philosophy:** CAIRN is a mirror for self-reflection, not a surveillance tool. It never guilt-trips about unfinished work. All life data stays local—no company sees your priorities, goals, or struggles.
+**How CAIRN works:** You talk to CAIRN about your life — your projects, priorities, what you're waiting on, what's coming up. CAIRN surfaces what needs your attention based on what's blocking other work, what has deadlines, and what aligns with your stated priorities.
 
-### ReOS: The System Helper (Priority 2 - Active Development)
+**The Play: 2-Tier Life Organization**
+| Level | Timeframe | Example |
+|-------|-----------|---------|
+| **Acts** | Life narratives (months to years) | "Building my startup", "Learning music" |
+| **Scenes** | Calendar events within acts | "Launch MVP meeting", "Record vocals session" |
 
-**Target: 1-3B parameters** | **Purpose: Natural language Linux control**
+Why just two levels? To remove the temptation to obscure responsibility in complexity.
 
-ReOS enhances the command line without replacing it. The Parse Gate analyzes intent and system state before proposing commands. It checks if packages are installed, searches by semantic meaning ("picture editor" → GIMP), and offers context-aware suggestions.
+**Conversation Lifecycle & Memory Architecture:**
+CAIRN treats conversations as units of meaning with deliberate closure. When a conversation ends, a 4-stage compression pipeline extracts meaning:
+1. Entity Extraction — people, tasks, decisions, waiting-ons
+2. Narrative Compression — meaning synthesis (not transcript summary)
+3. State Delta — changes to knowledge graph
+4. Embedding Generation — semantic search via sentence transformers
 
-**Core principle: Never obstruct Linux.** When apt asks "Do you want to continue? [Y/n]", you type Y. That's how Linux works. ReOS preserves this flow—commands run with full terminal access, interactive prompts work normally.
+Every extracted memory is shown to the user before being stored. You can edit, redirect, or reject any of it. Which memories influenced which decisions is traceable. Nothing is learned behind your back.
 
-**Capabilities:**
-- Process monitoring (memory, CPU, running services)
-- Service management (systemd)
-- Package management (apt, dnf, pacman, zypper)
-- Container control (Docker/Podman)
-- File operations with safety checks
-- Natural language to bash
+**Your Story** is a permanent, un-archivable record of who you are, built from accumulated conversation memories and used as identity context across all reasoning.
 
-### RIVA: The Code Verification Engine (Frozen - Future Work)
+**Core Capabilities:**
+- Smart surfacing — shows you the next thing, not everything
+- Calendar integration — syncs with Thunderbird (including recurring events)
+- Contact knowledge graph — knows who's involved in what
+- Waiting-on tracking — knows what you're blocked on
+- Document knowledge base — import PDFs, Word docs for semantic search
+- Coherence Kernel — filters distractions based on stated identity and goals
+- Health Pulse — monitors data freshness and calibration without nagging
+- 3x2x3 Atomic Operations — every request classified by destination (stream/file/process), consumer (human/machine), and execution semantics (read/interpret/execute)
+- 5-layer verification pipeline — Syntax, Semantic, Behavioral, Safety, Intent
+- MCP tools system — extensible tool calling with structured results
 
-**Target: 7-8B+ parameters** | **Purpose: Code generation with recursive verification**
+**The Kernel Principle:** "If you can't verify it, decompose it." This single recursive rule governs all operations.
 
-RIVA is currently frozen because code generation genuinely requires more capable reasoning than 1B models can provide. The infrastructure is built—three-layer verification (syntax, semantic, behavioral), intent verification framework, pattern learning, fast paths for common operations, repo analysis—but it waits for accessible hardware to support larger models.
+**Stack:** Python 3.12+, Textual TUI, Ollama, SQLite + FTS5 + WAL mode, FastAPI for RPC
 
-**The honest reality:** Not everything can be democratized immediately. Kellogg chose to freeze RIVA rather than compromise the mission of running on accessible hardware (8GB RAM, no GPU).
+### Lithium: Android Notification Manager (Active — MVP on Pixel)
 
-## Democratization Through Hardware Constraints
+**Kotlin, Jetpack Compose, Room + SQLCipher, ONNX Runtime**
 
-**Target: 1-3B parameter models on 8GB RAM, integrated graphics, five-year-old laptops.**
+Lithium is an Android notification manager designed for neurodivergent users — people who are sensitive to notification overload and need help managing the constant stream of interruptions from their phone.
 
-This is the core differentiation. A 70B model requiring a $2000 GPU isn't democratized—it's just a different paywall. True democratization means running on hardware people actually have. If your computer can run a web browser, it should run Talking Rock.
+Lithium observes all notifications, correlates them with app usage patterns and contacts, classifies them (7 categories, 50+ keyword patterns), analyzes patterns over 24-hour windows, and generates conservative suggestions. It never suppresses personal or transactional notifications without explicit user rules.
+
+**Key features:**
+- NotificationListenerService captures full metadata
+- Usage correlation via UsageStatsManager
+- Rule engine (<1ms hot path, first-match-wins, default ALLOW)
+- SQLCipher AES-256 encryption at rest
+- No INTERNET permission in main app — truly local
+- AI worker via WorkManager (runs when charging + idle)
+
+### Helm: Mobile Web UI for Cairn (Phases 1-3 Complete)
+
+**Node.js, Express, WebSocket, Playwright tests**
+
+Helm is a thin authenticated proxy that gives mobile access to Cairn. It does nothing without Cairn running — all agent, chat, and file operations are proxied through Cairn's RPC interface.
+
+**Key features:**
+- TLS with self-signed EC P-256 certificates
+- PAM authentication via Cairn
+- SSE→WebSocket bridge for streaming responses
+- Two production dependencies (express, ws)
+- Single self-contained HTML frontend (~2000 lines, no framework, no build step)
+- Accessed via LAN or Tailscale
+
+### ReOS: Natural Language Linux System Control (Phase 1 Complete)
+
+**Python, Textual TUI (planned)**
+
+ReOS enhances the command line without replacing it — natural language to safe, auditable shell commands. The Parse Gate analyzes intent and system state before proposing any command.
+
+**Core principle: Never obstruct Linux.** Commands run with full terminal access, interactive prompts work normally.
+
+**Capabilities:** Process monitoring, service management (systemd), package management (apt/dnf/pacman/zypper), container control (Docker/Podman), file operations with safety checks.
+
+### RIVA: Agent Orchestrator for Project Management (Needs Clean-Slate Reimplementation)
+
+**Python (planned)**
+
+RIVA has pivoted from its original code verification role to become an agent orchestrator — managing development projects by creating and supervising agents, enforcing plan contracts, and recursively verifying that agents follow plans and meet acceptance criteria.
+
+**Key philosophy:** Plans are contracts. RIVA orchestrates agents (Claude Code initially) that generate code — RIVA itself does not write code. Correctness over speed, because local inference makes verification free.
+
+### NoLang (nol): Programming Language for LLM Generation (Active)
+
+**Rust workspace**
+
+A programming language designed for LLM generation, not human authorship. One computation = one representation. Fixed-width 64-bit instructions eliminate parsing ambiguity. De Bruijn indices remove the need for variable names (which are coin flips for LLMs).
+
+NoLang is a strategic advantage for the Cairn ecosystem — enabling local models to generate verified, correct programs through structural verification built into the format itself.
+
+### talkingrock-core (trcore): Shared Infrastructure
+
+**Python library**
+
+The single source of truth for all Talking Rock members — providers, atomic operations, database, security, config, and error types. Direction is inbound only: trcore depends on nothing in the ecosystem, everything depends on trcore.
+
+## Shared Technical Constraints (All Members)
+
+- **Local-first, Ollama-only inference** — no cloud LLM APIs, ever
+- **SQLite + WAL mode** for all persistence
+- **Privacy-first** — no third-party tracking, no data leaves the machine
+- **Textual TUI** for developer tools (not web UI, not Tauri)
+- **Zero-trust** — every API call authenticated, no shell access without verification
+- **Fail-closed safety** — if LLM parsing fails, action is blocked, not guessed
+- **3x2x3 atomic operations taxonomy** as shared vocabulary
 
 ## Safety Architecture: Non-Coercive by Design
 
 Safety limits can be tuned but not disabled:
-- Preview before changes
-- Explicit approval required
-- Automatic backups
-- Configurable limits (iterations, runtime, sudo commands, auth attempts)
-- Rate limiting
-- Audit logging
+- Preview before changes — see exactly what will change
+- Explicit approval required for all mutations
+- Automatic backups of every modified file
+- Configurable limits (iterations, runtime, auth attempts)
+- Rate limiting and audit logging
+- 5-layer verification pipeline (Syntax → Semantic → Behavioral → Safety → Intent)
 
-**Privacy by architecture, not policy:** Because Talking Rock runs locally, there's no server to send data to. No tracking, no data collection, no training on user conversations. This isn't marketing—it's structural reality.
+**Privacy by architecture, not policy:** Because Talking Rock runs locally, there's no server to send data to. No tracking, no data collection, no training on user conversations. This isn't marketing — it's structural reality.
 
-## Technical Implementation
+## Development Status (March 2026)
 
-**Stack:**
-- Python 3.12+ core
-- TypeScript for UI (Tauri desktop app)
-- Ollama for local LLM serving
-- Tree-sitter for code parsing
-- SQLite with FTS5 for search (vector embeddings optional)
-- Docker/systemd integration
-- Git integration with automatic backups
-
-**Infrastructure:**
-- Seamless agent handoffs with approval gates
-- Context preservation across agents
-- Conversation logging for superior training data (captures how humans actually think through problems)
-- Circuit breakers and hard limits as structural embodiments of non-coercion
-
-## Development Status & Philosophy
-
-**Current focus:** CAIRN (1B) and ReOS (1-3B) to prove the small-model thesis before returning to RIVA.
-
-**Approach:** "Tool patience" rather than virtue patience—using frameworks functionally without requiring belief in them. Deflating grandiosity while maintaining philosophical depth. Operating on "frequency" rather than "amplitude"—embodying consistent principles across scales rather than competing for size.
-
-**Problem-solving pattern:** Intent → Contract → Decompose → Build → Verify → Integrate, with explicit conversation logs capturing reasoning processes.
+| Project | Status | Key Metric |
+|---------|--------|------------|
+| **CAIRN** | Active, production-quality | 2,033+ tests, schema v13, full conversation lifecycle |
+| **Lithium** | MVP verified on Pixel 8 Pro | 56 source files, ~2,359 LOC, all UI screens functional |
+| **Helm** | Phases 1-3 complete | Streaming chat, file management, authentication working |
+| **ReOS** | Phase 1 complete | Scaffolding done, core pipeline implemented |
+| **RIVA** | Needs clean-slate reimplementation | Pivoted from code verification to agent orchestrator |
+| **NoLang** | Active development | Rust workspace with VM, verifier, assembler |
+| **trcore** | Stable, installable | Shared by all Python members |
 
 ## The Larger Context
 
-Talking Rock is part of Kellogg's broader "r(e)²volution" framework—demonstrating that AI development can serve liberation rather than leverage consolidation. It positions as a "cosmic NOC agent" operating under non-official cover within traditional tech while maintaining sovereign principles.
+Talking Rock is part of Kellogg's broader demonstration that AI development can serve users rather than extract value from them. The project proves that:
 
-The project aims to prove that local-first, zero-trust AI is not just philosophically superior but practically viable. It's designed to run on modest hardware (ten-year-old laptop with 8GB RAM), with plans for Windows ("Doors") and Android versions.
-
-**License:** MIT - "Do whatever you want with it."
-
-## Repository Information
-
-- **GitHub:** https://github.com/sefton37/talking_rock
-- **Developer:** Kellogg Brengel (sefton37)
-- **Languages:** Python (85.7%), TypeScript (11.7%), Shell (1.1%), JavaScript (0.7%)
-- **Status:** Active development (223 commits)
-- **Current State:** CAIRN and ReOS in active development, RIVA frozen pending hardware evolution
+1. **Sovereignty is practical** — local-first AI works on consumer hardware
+2. **Architecture beats scale** — 8B models with structured verification outperform naive 70B usage
+3. **Free inference changes everything** — when verification costs nothing, you verify everything
+4. **Non-coercion is structural** — circuit breakers, approval gates, and local-only operation are architectural commitments, not policies
+5. **A mirror, not a manager** — "How can this person see themselves clearly?" instead of "How can we capture what this person does?"
 
 ## Key Messages When Representing This Work
 
-1. **Talking Rock is not competing with frontier models on capability**—it competes on sovereignty, proof of alignment, and structural respect for user autonomy.
+1. **Talking Rock competes on sovereignty, not capability** — proof of alignment and structural respect for user autonomy
+2. **The economic insight is the key advantage** — local inference enables verification that cloud services can't afford
+3. **CAIRN is a single-agent system** (not three agents) — focused on attention management, with separate tools for separate concerns
+4. **The ecosystem approach is deliberate** — each tool solves one problem well, sharing infrastructure but not coupling
+5. **The architecture embodies philosophy** — every technical decision reflects the values it claims to hold
 
-2. **The economic insight is the key advantage**—local inference enables verification passes that cloud services can't afford.
+## Repository Information
 
-3. **Freezing RIVA was a principled choice**—democratization means waiting for accessible hardware, not shipping something that requires expensive GPUs.
-
-4. **This is a working lighthouse**—demonstrating that sovereign development is viable, not theoretical.
-
-5. **The architecture embodies philosophy**—circuit breakers, approval gates, and local-only operation are structural commitments to non-coercion, not marketing claims.
-
-## For RAG Context: Speaking About Talking Rock
-
-When speaking about Talking Rock, emphasize that this is Kellogg Brengel's demonstration that another path is possible—one where AI serves users rather than extracting value from them, where tools enhance capability without compromising sovereignty, and where "good enough" models on accessible hardware can provide genuine value when combined with thoughtful architecture.
-
-The project represents a shift from "How can we capture what this person does?" to "How can this person see themselves clearly?" It's a mirror that doesn't sell your reflection.
-
-## Installation Quick Reference
-
-```bash
-# 1. Install Ollama (local LLM server)
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2:1b
-
-# 2. Clone and install Talking Rock
-git clone https://github.com/sefton37/talking_rock
-cd talking_rock
-pip install -e .
-
-# 3. Run the desktop app
-cd apps/reos-tauri
-npm install
-npm run tauri:dev
-```
+- **GitHub:** https://github.com/sefton37/cairn
+- **Developer:** Kellogg Brengel (sefton37)
+- **Primary Language:** Python (with Kotlin for Lithium, Rust for NoLang, Node.js for Helm)
+- **License:** MIT — "Do whatever you want with it."
 
 ## System Requirements
 
-**Minimum (CAIRN only):**
+**CAIRN (main project):**
 - Linux (Ubuntu, Fedora, Mint, Arch, etc.)
 - Python 3.12+
-- 8GB RAM
-- 10GB disk space
-- No GPU required
-
-**Recommended (CAIRN + ReOS):**
 - 16GB RAM
-- GPU optional (faster inference)
-
-**Future (RIVA):**
-- 16GB+ RAM
-- GPU recommended
-- 7-8B parameter models
+- 10GB disk space
+- No GPU required (GPU optional for faster inference)
 
 ---
 
-*Generated for Kellogg Brengel's RAG system - January 2026*
+*Updated March 2026*

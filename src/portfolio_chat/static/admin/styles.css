@@ -1,15 +1,15 @@
-/* Analytics Dashboard Styles */
+/* Analytics Dashboard Styles — Dusk & Stone */
 :root {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-card: #0f3460;
-    --text-primary: #eaeaea;
-    --text-secondary: #a0a0a0;
-    --accent: #e94560;
-    --accent-hover: #ff6b6b;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --border: #2d3748;
+    --bg-primary: #0f1114;
+    --bg-secondary: #1a1b1f;
+    --bg-card: #242629;
+    --text-primary: #f0ece4;
+    --text-secondary: #8a8d96;
+    --accent: #d4a856;
+    --accent-hover: #e0be6a;
+    --success: #4a9a6e;
+    --warning: #c9a030;
+    --border: #2e3035;
 }
 
 * {
@@ -378,7 +378,7 @@ header h1 {
 
 .message.assistant {
     background: var(--accent);
-    background: linear-gradient(135deg, var(--accent), #a855f7);
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
     align-self: flex-start;
 }
 

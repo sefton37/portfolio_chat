@@ -80,8 +80,8 @@ class RateLimits:
 class ModelConfig:
     """Model selection configuration."""
 
-    # Tier 1: Fast classifiers (0.5B-1.5B)
-    CLASSIFIER_MODEL: str = _env_str("CLASSIFIER_MODEL", "qwen2.5:0.5b")
+    # Tier 1: Fast classifiers (3B — upgraded from 0.5B for better routing accuracy)
+    CLASSIFIER_MODEL: str = _env_str("CLASSIFIER_MODEL", "qwen2.5:3b")
     ROUTER_MODEL: str = _env_str("ROUTER_MODEL", "llama3.2:1b")
 
     # Tier 2: Generation model (7B-8B)
@@ -89,7 +89,7 @@ class ModelConfig:
 
     # Tier 3: Verifier model for L7/L8 (should be different from generator to avoid self-reinforcing bias)
     # Defaults to classifier model (smaller, different perspective)
-    VERIFIER_MODEL: str = _env_str("VERIFIER_MODEL", _env_str("CLASSIFIER_MODEL", "qwen2.5:0.5b"))
+    VERIFIER_MODEL: str = _env_str("VERIFIER_MODEL", _env_str("CLASSIFIER_MODEL", "qwen2.5:3b"))
 
     # Embedding model for semantic verification
     EMBEDDING_MODEL: str = _env_str("EMBEDDING_MODEL", "nomic-embed-text")
@@ -155,12 +155,14 @@ class ServerConfig:
         if origin.strip()
     )
 
-    # Trusted proxy IPs that are allowed to set X-Forwarded-For headers
-    # Empty means don't trust any proxy (use direct client IP)
-    # Set to Cloudflare IPs or your reverse proxy IP(s)
+    # Trusted proxy IPs that are allowed to set X-Forwarded-For headers.
+    # The app binds to 127.0.0.1 and sits behind a local cloudflared daemon,
+    # so the direct peer is always 127.0.0.1. Trusting that address lets
+    # get_client_ip() read the real visitor IP from CF-Connecting-IP.
+    # Override via TRUSTED_PROXIES env var (comma-separated) if the topology changes.
     TRUSTED_PROXIES: frozenset[str] = frozenset(
         ip.strip()
-        for ip in _env_str("TRUSTED_PROXIES", "").split(",")
+        for ip in _env_str("TRUSTED_PROXIES", "127.0.0.1").split(",")
         if ip.strip()
     )
 

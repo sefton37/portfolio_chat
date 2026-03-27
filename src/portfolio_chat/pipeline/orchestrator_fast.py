@@ -484,6 +484,8 @@ class FastPipelineOrchestrator:
             l0_result = await self.layer0.validate_request(
                 client_ip=client_ip,
                 request_id=request_id,
+                content_type="application/json",
+                content_length=len(message.encode()) if message else 0,
                 has_message=bool(message),
             )
             if l0_result.blocked:

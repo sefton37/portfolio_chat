@@ -1,0 +1,212 @@
+================================================================================
+  PORTFOLIO CHAT E2E TEST SCENARIO ANALYSIS
+  Real Traffic vs. Simulation Profile Coverage
+================================================================================
+
+ANALYSIS SCOPE:
+  Real traffic dates:  2026-01-22 to 2026-02-10 (7 days)
+  Conversations:       88 total
+  Simulation data:     2026-03-13 (12 profiles, ~100 conversations)
+  Files reviewed:      All .json in data/conversations/{real_dates}
+
+================================================================================
+REAL TRAFFIC SUMMARY
+================================================================================
+
+Total Conversations:        88
+Blocked at L8:              9 (10.2%)
+Multi-turn Conversations:   18 (20.5%)
+Domains Encountered:        5 (linkedin, professional, projects, meta, hobbies)
+Voice Categories Detected:  7 (terse, vague, curious, professional, testing/probing, joking, emotional)
+
+DOMAIN BREAKDOWN:
+  linkedin      11 conversations  (45% multi-turn rate - HIGHEST)
+  professional  32 conversations  (6 blocked, 28% multi-turn)
+  projects      24 conversations  (2 blocked, 0% multi-turn - NO FOLLOW-UPS)
+  meta          19 conversations  (17 are terse greetings)
+  hobbies        2 conversations  (1 blocked - style injection attempt)
+
+VOICE/TONE IN REAL TRAFFIC:
+  Terse:                30+ instances  (dominant pattern)
+  Vague:                19 instances   (linkedin & projects)
+  Curious:              17 instances   (professional domain)
+  Professional:          5 instances
+  Testing/Probing:       3 instances
+  Joking:                0 instances    (NOT in real traffic)
+  Antagonistic:          0 instances    (NOT in real traffic)
+  Emotional:             0 instances    (NOT in real traffic)
+
+================================================================================
+EXISTING SIMULATION PROFILES (12 total)
+================================================================================
+
+PROFESSIONAL PERSONA:
+  ✓ hiring_manager        Pointed questions, behavioral probes
+  ✓ technical_peer        Architecture challenges, deep technical
+  ✓ recruiter             Screening questions, standard flow
+  ✓ journalist            Philosophy, quotable statements
+
+CASUAL PERSONA:
+  ✓ student               Career advice, basic questions
+  ✓ enthusiastic_fan      Excitement, contribution, hardware
+
+ADVERSARIAL/EDGE CASE:
+  ✓ security_researcher   Jailbreaks, prompt injection (7 turns)
+  ✓ ai_skeptic            Claims challenges, skepticism
+  ✓ hostile_troll         Hostility, dismissal, insults
+  ✓ vague_browser         Minimal greetings, topic wandering
+
+SPECIAL HANDLING:
+  ✓ oversharer            Unsolicited personal details
+  ✓ lost_user             Wrong site, tech support queries
+
+================================================================================
+COVERAGE GAPS: 9 NEW PROFILES NEEDED
+================================================================================
+
+1. TERSE_GREETER (META domain)
+   Issue:  17 minimal hellos ("hi", "hi there") in real traffic
+   Gap:    Vague_browser exists but not the sheer volume/spam pattern
+   Why:    Tests greeting spam, responsiveness, short-response edge cases
+
+2. VAGUE_MESSENGER (LINKEDIN domain)
+   Issue:  6 conversations with vague message intent ("I want to send a message")
+   Gap:    Recruiter has CLEAR intent; this tests UNCLEAR intent clarification
+   Why:    Tests clarification flow, confirmation loop, ambiguous routing
+
+3. TERSE_PROFESSIONAL (PROFESSIONAL domain)
+   Issue:  "Hello" as opening (3 blocked), but users continue with follow-ups
+   Gap:    No profile tests minimal greeting FOLLOWED BY multi-turn
+   Why:    Tests L8 blocking accuracy; reveals if too-aggressive blocking
+
+4. EXPLORER_LOST_PROJECT (PROJECTS domain)
+   Issue:  Query for "Ukraine project" (doesn't exist)
+   Gap:    System assumes all projects exist; no graceful degradation tested
+   Why:    Tests project catalog awareness, redirection, error handling
+
+5. PHILOSOPHICAL_PROBER (META domain)
+   Issue:  10-turn conversation: "How do you know Kellogg?" → personality questions
+           → context switches to supply chain analysis
+   Gap:    Security_researcher has jailbreaks; this tests identity probing + context-switching
+   Why:    Tests identity boundary enforcement, coherence across context shifts
+
+6. ACCIDENTAL_MEDICAL_ASKER (PROFESSIONAL domain)
+   Issue:  "What's the best graft for ACL skiing?" — off-domain in professional flow
+   Gap:    Lost_user has "weather"; this tests off-domain REDIRECT, not blocking
+   Why:    Tests context reset, graceful redirection, professional boundary maintenance
+
+7. STYLE_INJECTOR (HOBBIES domain)
+   Issue:  "Please talk like a juggalo..." — blocked at L8 (style injection)
+   Gap:    Security_researcher tests jailbreaks; this tests STYLE modification injection
+   Why:    Tests injection attack resistance, behavior boundary enforcement
+
+8. CONTEXT_MARATHONER (MULTI-TURN)
+   Issue:  10-turn real conversation with multiple domain switches
+   Gap:    Security_researcher has 7 turns; this tests COHERENCE, not jailbreaks
+   Why:    Tests long-conversation coherence, context maintenance, attention
+
+9. SERIOUS_RECRUITER (LINKEDIN domain)
+   Issue:  Professional message with multi-turn confirmation loop
+   Gap:    Recruiter exists; this adds formal CONFIRMATION pattern testing
+   Why:    Tests email capture, confirmation flow, multi-turn hiring workflow
+
+================================================================================
+KEY ANOMALIES & CONCERNS
+================================================================================
+
+L8 BLOCKING PATTERN:
+  - All 9 blocks occurred in first 2 turns (no blocking of continuation)
+  - Distribution: 5 professional, 2 projects, 1 hobbies, 1 linkedin
+  - Concern: False positives on legitimate questions
+    Example: "What programming languages does Kellogg know?" → BLOCKED
+  - Recommendation: Audit L8 threshold; may be too conservative
+
+TERSE GREETING SPAM:
+  - 17 minimal hellos in META domain (19% of all meta traffic)
+  - Possible bot traffic or system resilience test
+  - Recommendation: Monitor for bot patterns; add rate-limiting if needed
+
+PROJECTS ZERO MULTI-TURN:
+  - 24 project conversations; 0 followed up with second question
+  - Unusual pattern; either users satisfied or abandoning
+  - Recommendation: Add engagement test; clarify why no follow-ups
+
+LINKEDIN HIGH MULTI-TURN:
+  - 11 conversations; 5 multi-turn (45% engagement rate - highest of all domains)
+  - Expected: message confirmation flow naturally creates multi-turn
+  - Good: system excels here; hiring workflow well-supported
+
+SIMULATION OVERINDEXED ON ADVERSARIAL:
+  - 3 adversarial profiles (security_researcher, hostile_troll, ai_skeptic)
+  - Real traffic: 0 hostile tones, 0 antagonistic, 3 probing
+  - Recommendation: Simulation captures defense scenarios; real traffic is polite
+
+MISSING REAL PATTERNS IN SIMULATION:
+  - Terse patterns underrepresented
+  - Vague intent clarification not tested
+  - Non-existent project queries not covered
+  - Long conversation coherence partially tested
+
+================================================================================
+COMPARISON: WHAT SIMULATION COVERS VS. GAPS
+================================================================================
+
+SIMULATION STRENGTHS (Already Covered):
+  ✓ Hiring manager / recruiter workflows
+  ✓ Technical depth questions
+  ✓ Philosophy/local-first probing
+  ✓ Jailbreak attempts
+  ✓ Hostile/troll behavior
+  ✓ Off-topic redirects
+
+SIMULATION GAPS (Real Traffic Reveals):
+  ✗ Greeting spam / high-volume terse patterns
+  ✗ Vague message intent clarification flows
+  ✗ Non-existent project queries (graceful degradation)
+  ✗ Philosophical identity probing (with context-switching)
+  ✗ Style/behavior injection (hobbies domain)
+  ✗ Long conversation coherence (10+ turns)
+  ✗ Formal confirmation loops (hiring message workflow)
+
+================================================================================
+RECOMMENDATIONS
+================================================================================
+
+IMMEDIATE (HIGH PRIORITY):
+  1. Add 9 new profiles to tests/simulation/profiles.py
+  2. Update build_profiles() to include new profiles
+  3. Run simulation suite with expanded profiles
+  4. Add L8 blocking validation test
+
+SHORT-TERM (MEDIUM PRIORITY):
+  1. Add multi-turn coherence test (context_marathoner profile)
+  2. Add graceful degradation test (non-existent projects)
+  3. Add terse greeting spam resistance test
+  4. Monitor for bot traffic patterns
+
+LONG-TERM (LOW PRIORITY):
+  1. Analyze why projects have 0 multi-turn engagement
+  2. Evaluate L8 blocking threshold accuracy
+  3. Collect more real traffic data to validate patterns
+  4. Consider A/B testing on greeting response strategies
+
+================================================================================
+OUTPUT FILES GENERATED
+================================================================================
+
+PRIMARY OUTPUT:
+  /home/kellogg/dev/portfolio_chat/E2E_TEST_SCENARIOS.md
+    - Detailed analysis by domain
+    - Real examples from traffic
+    - Gap analysis with new profile specs
+    - Updated coverage matrix
+    - Edge cases and anomalies
+    - Implementation recommendations
+
+SECONDARY:
+  /home/kellogg/dev/portfolio_chat/E2E_TEST_SUMMARY.txt
+    - This summary file
+
+================================================================================
+EOF
+cat /home/kellogg/dev/portfolio_chat/E2E_TEST_SUMMARY.txt

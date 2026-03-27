@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflare Tunnel (talkingrock.ai, chat-api, analytics, cairn)
+After=network.target portfolio-chat.service
+
+[Service]
+Type=simple
+User=kellogg
+ExecStart=/usr/local/bin/cloudflared tunnel run portfolio-chat
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

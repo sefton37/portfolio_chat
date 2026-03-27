@@ -71,9 +71,18 @@ Thumbs.db
 # Project specific
 .claude/
 
-# Contact messages (keep directory structure, exclude actual messages)
+# Data — conversation logs contain IP hashes, cache is ephemeral
 data/contacts/*.json
 !data/contacts/.gitkeep
+data/conversations/
+data/cache/
+
+# Simulation results (large binary DBs)
+tests/simulation/results/
+
+# Credentials and personal documents
+context/professional/*.pdf
+context/professional/*.docx
 
 # Jupyter Notebooks (if any)
 .ipynb_checkpoints/

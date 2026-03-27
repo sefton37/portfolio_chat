@@ -28,7 +28,7 @@ Talking Rock is not a single application — it's a family of tools that share p
 
 **Target: 8B parameter models on 16GB RAM (3B stretch goal)** | **2,033+ tests passing**
 
-CAIRN is the heart of Talking Rock — a personal attention minder that helps you focus on what you value without overwhelming you. It's a mirror for self-reflection, not a surveillance tool. It never guilt-trips about unfinished work. All life data stays local.
+CAIRN is not an acronym — it is a proper name, like a cairn (a stack of stones used as a trail marker). CAIRN is the heart of Talking Rock — a personal attention minder that helps you focus on what you value without overwhelming you. It's a mirror for self-reflection, not a surveillance tool. It never guilt-trips about unfinished work. All life data stays local.
 
 **How CAIRN works:** You talk to CAIRN about your life — your projects, priorities, what you're waiting on, what's coming up. CAIRN surfaces what needs your attention based on what's blocking other work, what has deadlines, and what aligns with your stated priorities.
 

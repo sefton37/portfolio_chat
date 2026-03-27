@@ -10,7 +10,7 @@ Kellogg Brengel's projects demonstrate his approach to building software: sovere
 A family of AI tools designed to run entirely on consumer hardware. Embodies Kellogg's core philosophy: AI that serves without coercing, operates through invitation rather than extraction, and proves that architecture multiplies capability.
 
 **The ecosystem:**
-- **CAIRN** — Personal attention minder. Helps you see yourself clearly without guilt-tripping. 2,033+ tests, full conversation lifecycle with memory extraction. The heart of Talking Rock.
+- **CAIRN** — Personal attention minder (not an acronym — named after a cairn, a stack of stones used as a trail marker). Helps you see yourself clearly without guilt-tripping. 2,033+ tests, full conversation lifecycle with memory extraction. The heart of Talking Rock.
 - **Lithium** — Android notification manager for neurodivergent users. Kotlin + Compose, SQLCipher encrypted, MVP verified on Pixel.
 - **Helm** — Mobile web UI for Cairn. Node.js thin proxy, TLS, PAM auth.
 - **ReOS** — Natural language Linux system control. Safe, auditable shell commands.

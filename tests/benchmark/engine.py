@@ -511,11 +511,14 @@ class BenchmarkEngine:
             default_model=config.classifier_model,
         )
 
-        # Build instrumented orchestrator with the generator injected
+        # Build instrumented orchestrator with the generator injected.
+        # analytics_storage=None prevents benchmark traffic from polluting
+        # the production analytics dashboard.
         orchestrator = _InstrumentedOrchestrator(
             ollama_client=generator_client,
             conversation_manager=ConversationManager(),
             contact_storage=ContactStorage(),
+            analytics_storage=None,
         )
 
         # For Anthropic generators, re-wire layer2 to use the Ollama classifier

@@ -299,6 +299,11 @@ class FastPipelineOrchestrator:
 
             metrics.domain_matched = l4_result.domain.value
 
+            # Ensure intent is defined for L5 (classifier-off branch doesn't set it)
+            if not PIPELINE.USE_COMBINED_CLASSIFIER:
+                from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
+                intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
+
             # ===== LAYER 5: Context Retrieval =====
             l5_start = time.time()
             if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED and isinstance(self.layer5, SemanticContextRetriever):

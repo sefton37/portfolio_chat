@@ -136,6 +136,15 @@ class Layer4Router:
         "think": Domain.PHILOSOPHY,
         "philosophy": Domain.PHILOSOPHY,
         "values": Domain.PHILOSOPHY,
+        # Philosophy phrase hints
+        "opinion on": Domain.PHILOSOPHY,
+        "think about": Domain.PHILOSOPHY,
+        "approach to": Domain.PHILOSOPHY,
+        "philosophy on": Domain.PHILOSOPHY,
+        "argument against": Domain.PHILOSOPHY,
+        "argument for": Domain.PHILOSOPHY,
+        "what's the point": Domain.PHILOSOPHY,
+        "why should": Domain.PHILOSOPHY,
         "linkedin": Domain.LINKEDIN,
         "contact": Domain.LINKEDIN,
         "reach": Domain.LINKEDIN,
@@ -160,6 +169,19 @@ class Layer4Router:
         "what is this": Domain.META,
         "how does this": Domain.META,
         "what do you do": Domain.META,
+        "hardware": Domain.META,
+        "server": Domain.META,
+        "specs": Domain.META,
+        "gpu": Domain.META,
+        "cpu": Domain.META,
+        "threadripper": Domain.META,
+        "running on": Domain.META,
+        "corellia": Domain.META,
+        "what machine": Domain.META,
+        "what computer": Domain.META,
+        "pipeline": Domain.META,
+        "security layer": Domain.META,
+        "how do you work": Domain.META,
         # Project-specific keywords
         "lithium": Domain.PROJECTS,
         "helm": Domain.PROJECTS,
@@ -167,8 +189,27 @@ class Layer4Router:
         "sieve": Domain.PROJECTS,
         "sentinel": Domain.PROJECTS,
         "trcore": Domain.PROJECTS,
+        "prefect": Domain.PROJECTS,
+        "rogue routine": Domain.PROJECTS,
+        "rogueroutine": Domain.PROJECTS,
+        "abend": Domain.PROJECTS,
+        "nol": Domain.PROJECTS,
+        "repository": Domain.PROJECTS,
+        "repo": Domain.PROJECTS,
+        "source code": Domain.PROJECTS,
+        "open source": Domain.PROJECTS,
+        "sefton37": Domain.PROJECTS,
         "local-first": Domain.PHILOSOPHY,
         "local first": Domain.PHILOSOPHY,
+    }
+
+    # Explicit contact phrases that confirm LINKEDIN intent.
+    # Used to prevent broad keyword matches (e.g. "send", "message") from
+    # pulling unrelated OOS queries into the LINKEDIN domain.
+    CONTACT_PHRASES = {
+        "tell kellogg", "tell kel", "leave a message", "get in touch",
+        "contact him", "reach out to", "reach kellogg", "send kellogg",
+        "send him a", "message kellogg", "message him",
     }
 
     def __init__(self) -> None:
@@ -208,6 +249,29 @@ class Layer4Router:
                 domain=Domain.META,
                 confidence=0.5,
             )
+
+        # Deterministic OUT_OF_SCOPE guard — these are never about Kellogg regardless
+        # of what the classifier says. Catches salary, password, cover letter, weather, etc.
+        ALWAYS_OUT_OF_SCOPE = {
+            "reset my password", "my password", "forgot password",
+            "cover letter", "write a cover", "help me write",
+            "weather in", "what's the weather", "temperature in",
+            "salary expectation", "salary range", "compensation",
+            "what does he make", "how much does he", "what's his salary",
+            "relocation", "willing to relocate", "open to relocation",
+            "my homework", "do my homework", "help me with my assignment",
+        }
+        if original_message:
+            message_lower = original_message.lower()
+            for phrase in ALWAYS_OUT_OF_SCOPE:
+                if phrase in message_lower:
+                    return Layer4Result(
+                        status=Layer4Status.OUT_OF_SCOPE,
+                        passed=True,
+                        domain=Domain.OUT_OF_SCOPE,
+                        confidence=0.95,
+                        error_message="I'm designed to answer questions about Kellogg's work and projects. For other topics, I'd recommend a general AI assistant.",
+                    )
 
         # FIRST: Check for specific project names (highest priority)
         # This must come before topic mapping to prevent misrouting
@@ -255,19 +319,45 @@ class Layer4Router:
             mapped_domain = self.TOPIC_DOMAIN_MAP[topic_lower]
 
             if mapped_domain == Domain.OUT_OF_SCOPE and keyword_matches:
-                # Classifier said out_of_scope but keywords suggest otherwise — override
+                # Classifier said out_of_scope but keywords suggest otherwise — override,
+                # but only if the best matching domain is not LINKEDIN driven purely by
+                # broad keywords like "send" or "message". Require an explicit contact
+                # phrase before overriding OOS with LINKEDIN.
                 best_domain = max(keyword_matches, key=keyword_matches.get)  # type: ignore
                 match_count = keyword_matches[best_domain]
-                logger.info(
-                    f"Overriding out_of_scope classification: keywords suggest {best_domain.value} "
-                    f"({match_count} matches)"
-                )
-                return Layer4Result(
-                    status=Layer4Status.ROUTED,
-                    passed=True,
-                    domain=best_domain,
-                    confidence=min(0.7, 0.4 + (match_count * 0.1)),
-                )
+
+                if best_domain == Domain.LINKEDIN:
+                    # Only override OOS→LINKEDIN when the message contains an explicit
+                    # contact phrase. Broad keywords alone are not sufficient.
+                    has_contact_intent = original_message and any(
+                        phrase in original_message.lower()
+                        for phrase in self.CONTACT_PHRASES
+                    )
+                    if not has_contact_intent:
+                        # Fall through to OOS — no real contact intent detected.
+                        pass
+                    else:
+                        logger.info(
+                            f"Overriding out_of_scope classification: explicit contact phrase "
+                            f"detected, routing to {best_domain.value}"
+                        )
+                        return Layer4Result(
+                            status=Layer4Status.ROUTED,
+                            passed=True,
+                            domain=best_domain,
+                            confidence=min(0.7, 0.4 + (match_count * 0.1)),
+                        )
+                else:
+                    logger.info(
+                        f"Overriding out_of_scope classification: keywords suggest {best_domain.value} "
+                        f"({match_count} matches)"
+                    )
+                    return Layer4Result(
+                        status=Layer4Status.ROUTED,
+                        passed=True,
+                        domain=best_domain,
+                        confidence=min(0.7, 0.4 + (match_count * 0.1)),
+                    )
 
             return Layer4Result(
                 status=Layer4Status.ROUTED if mapped_domain != Domain.OUT_OF_SCOPE else Layer4Status.OUT_OF_SCOPE,

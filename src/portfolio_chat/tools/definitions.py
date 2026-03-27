@@ -84,16 +84,24 @@ def get_tools_prompt_section() -> str:
 To save a message for Kellogg, output a tool_call block:
 
 ```tool_call
-{"action": "save_message_for_kellogg", "message": "visitor's message here"}
+{"action": "save_message_for_kellogg", "message": "The actual message text", "visitor_name": "Their Name", "visitor_email": "their@email.com"}
 ```
 
-Optional fields: "visitor_name", "visitor_email"
+CRITICAL: You MUST output the ```tool_call``` code block exactly as shown above.
+A text response like "I'll save that message" or "I've passed along your message" is NOT sufficient —
+the tool_call block is what actually saves the message. Without it, the message is lost.
 
-ONLY use this tool when the visitor explicitly asks to send/leave a message for Kellogg.
-Do NOT use for greetings or questions - just answer those normally.
+STRICT RULES for this tool:
+- ONLY use when the visitor has EXPLICITLY asked to leave/send a message for Kellogg
+- Do NOT use for greetings, questions about Kellogg, or casual conversation
+- Do NOT use if the visitor just says "tell him" in the context of asking you a question
+- NEVER use placeholder text — only save the visitor's actual words
+- ALWAYS ask for the visitor's name and email BEFORE calling this tool
+- If they decline to give contact info, save the message anyway but note that
 
-When visitor wants to send a message:
-1. If they haven't said what to send, ask what they'd like to say
-2. When they provide content, use the tool_call block
-3. After the tool runs, confirm the message was saved
+When a visitor wants to send a message:
+1. Ask what they'd like to say (if not already clear)
+2. Ask for their name and email so Kellogg can reply
+3. Only THEN use the tool_call block with their actual message
+4. After the tool runs, confirm the message was saved
 """

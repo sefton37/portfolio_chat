@@ -7,12 +7,23 @@ Provides localhost-only API endpoints for viewing analytics data.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+
+_UUID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+)
+
+
+def _validate_uuid(value: str, label: str) -> None:
+    """Raise HTTP 400 if value is not a valid lowercase UUID."""
+    if not _UUID_RE.fullmatch(value.lower()):
+        raise HTTPException(status_code=400, detail=f"Invalid {label} format")
 
 from portfolio_chat.analytics.service import AnalyticsService
 from portfolio_chat.analytics.storage import ConversationStorage
@@ -166,6 +177,7 @@ async def get_conversation(
 
     Returns complete message history for a specific conversation.
     """
+    _validate_uuid(conversation_id, "conversation_id")
     detail = await service.get_conversation_detail(conversation_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -213,6 +225,7 @@ async def get_inbox_message(
     """
     Get a specific inbox message by ID.
     """
+    _validate_uuid(message_id, "message_id")
     message = await storage.get(message_id)
     if message is None:
         raise HTTPException(status_code=404, detail="Message not found")

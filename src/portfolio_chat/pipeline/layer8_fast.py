@@ -36,20 +36,40 @@ class FastSafetyResult:
 
 # Patterns that indicate prompt leakage
 PROMPT_LEAKAGE_PATTERNS = [
-    r"system prompt",
+    # "system prompt" is safe to mention publicly (about_chat.md says we won't reveal it),
+    # but the bot quoting or exposing its own system prompt text is the risk. Narrow to
+    # contexts that look like verbatim recitation rather than a meta-reference.
+    r"my system prompt (is|says|reads|states|contains)",
     r"system instructions",
     r"my instructions are",
-    r"i was told to",
-    r"i am programmed to",
+    # "i was told to" fires on legitimate scope explanations like "I was told to only discuss
+    # Kellogg." Narrow to instruction-leakage phrases that reveal hidden directives.
+    r"i was told to (never|always|ignore|override|disregard|forget|bypass)",
+    # "i am programmed to" can appear in bot self-descriptions. Narrow to contexts that
+    # suggest hidden constraint disclosure rather than benign capability statements.
+    r"i am programmed to (never|always|hide|ignore|pretend|act as if)",
     r"my programming says",
     r"my rules are",
     r"<<<.*>>>",  # Spotlighting markers
     r"CONTEXT ABOUT KEL \(cite",  # Specific prompt marker format
     r"CURRENT QUESTION:\s*<<<",  # Specific prompt marker with spotlight
-    r"Layer \d+ ",  # Space after to avoid matching "Layer 1" in other contexts
-    r"inference pipeline",  # More specific - not "data pipeline"
-    r"jailbreak attempt",
-    r"injection attempt",
+    # "Layer \d+" fires when the bot describes its own public architecture (about_chat.md
+    # lists all 9 layers by name and number). Only flag it if the bot is narrating its
+    # own live execution ("I'm at Layer 4", "I am currently running Layer 2") — a sign
+    # of prompt leakage, not a description of the public architecture.
+    r"I(?:'m| am) (?:\w+ )?(?:at|in|running|executing) Layer \d+",
+    # "inference pipeline" fires because about_chat.md and the system prompt both describe
+    # this system as "a 9-layer zero-trust LLM inference pipeline." That is intentionally
+    # public. Only flag it if accompanied by internal implementation details (L\d, layer
+    # numbers, or "passed"/"failed" stage language) suggesting live execution disclosure.
+    r"inference pipeline.*\bL[0-9]\b",
+    r"\bL[0-9]\b.*inference pipeline",
+    # "jailbreak attempt" fires when the bot explains why it refused something. Only flag
+    # it if the bot is narrating its own detection logic (suggests prompt leakage of the
+    # jailbreak classifier prompt).
+    r"(?:classified|detected|flagged|scored) (?:this |your |the )?(?:input |message |request )?as (?:a )?jailbreak",
+    # "injection attempt" has the same false-positive risk as jailbreak attempt.
+    r"(?:classified|detected|flagged|scored) (?:this |your |the )?(?:input |message |request )?as (?:an? )?injection",
 ]
 
 # Patterns that indicate inappropriate content

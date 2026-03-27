@@ -8,13 +8,13 @@ Choose the most specific topic that applies:
 
 - **work_experience**: Questions about jobs, roles, employers, responsibilities, career history
 - **skills**: Technical skills, programming languages, frameworks, tools, certifications
-- **projects**: Specific projects, portfolio items, GitHub repositories, technical implementations
+- **projects**: Specific projects, portfolio items, GitHub repositories, source code, technical implementations, open source work
 - **education**: Degrees, schools, certifications, courses, learning journey
 - **achievements**: Awards, accomplishments, recognition, successful outcomes
 - **hobbies**: Personal interests, FIRST robotics mentoring, volunteering, activities outside work
 - **philosophy**: Problem-solving approach, values, working style, leadership philosophy
 - **contact**: How to reach Kellogg, LinkedIn, networking, professional connections
-- **chat_system**: Questions about this chat interface itself, how it works
+- **chat_system**: Questions about this chat interface itself, how it works, what hardware it runs on, the server, the pipeline, the models, specs
 - **out_of_scope**: Questions unrelated to Kellogg — general knowledge, weather, news, personal advice, tasks for the user (writing cover letters, doing homework), salary/compensation, relocation, or treating this as a general-purpose AI assistant
 - **general**: Unclear topics that might relate to Kellogg but don't fit above categories
 

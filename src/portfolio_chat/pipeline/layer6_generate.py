@@ -192,13 +192,6 @@ DOMAIN: {domain}
             "(e.g., 'According to his resume...' or 'His skills include...'). "
             "If the context doesn't contain relevant information, say so transparently."
         )
-        parts.append("")
-        parts.append(
-            "IMPORTANT: If the visitor wants to SEND a message to Kellogg (uses phrases like "
-            "'send a message', 'tell him', 'let him know', 'leave a message', 'contact him'), "
-            "you MUST use the save_message_for_kellogg tool. Do NOT just provide contact info. "
-            "Output the tool call using the ```tool_call``` format shown above."
-        )
 
         return "\n".join(parts)
 
@@ -264,10 +257,12 @@ DOMAIN: {domain}
 
             # Check for tool calls in the response
             if self._enable_tools and self._tool_executor:
+                # Always strip tool call syntax from the visible response, even if
+                # the call is malformed or unrecognised — raw ```tool_call``` blocks
+                # must never reach the user.
+                visible_response = self._tool_executor.remove_tool_calls(response)
                 tool_calls = self._tool_executor.parse_tool_calls(response)
                 if tool_calls:
-                    # Remove tool call blocks from visible response
-                    visible_response = self._tool_executor.remove_tool_calls(response)
                     return Layer6Result(
                         status=Layer6Status.TOOL_CALL,
                         passed=True,
@@ -275,6 +270,8 @@ DOMAIN: {domain}
                         model_used=self.model,
                         tool_calls=tool_calls,
                     )
+                # Malformed / unrecognised tool call: return cleaned visible text.
+                response = visible_response
 
             return Layer6Result(
                 status=Layer6Status.SUCCESS,

@@ -82,7 +82,7 @@ class ModelConfig:
 
     # Tier 1: Fast classifiers (3B — upgraded from 0.5B for better routing accuracy)
     CLASSIFIER_MODEL: str = _env_str("CLASSIFIER_MODEL", "qwen2.5:3b")
-    ROUTER_MODEL: str = _env_str("ROUTER_MODEL", "llama3.2:1b")
+    ROUTER_MODEL: str = _env_str("ROUTER_MODEL", "llama3.2:3b")
 
     # Tier 2: Generation model (7B-8B)
     GENERATOR_MODEL: str = _env_str("GENERATOR_MODEL", "mistral:7b")

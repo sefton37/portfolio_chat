@@ -7,7 +7,10 @@ Provides /chat, /health, and /metrics endpoints.
 
 from __future__ import annotations
 
+import base64
+import json as json_module
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -37,6 +40,7 @@ from portfolio_chat.pipeline.layer5_context import SemanticContextRetriever
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator_fast import FastPipelineOrchestrator
 from portfolio_chat.utils.logging import generate_request_id, hash_ip, request_id_var, setup_logging
+from portfolio_chat.utils.rate_limit import InMemoryRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +194,17 @@ class ContactResponseModel(BaseModel):
     error: str | None = None
 
 
+# Dedicated rate limiter for contact submissions: tighter than chat limits.
+# Global window is set high so it only enforces per-IP constraints.
+contact_rate_limiter = InMemoryRateLimiter(
+    per_ip_per_minute=3,
+    per_ip_per_hour=10,
+    global_per_minute=10_000,
+)
+
+# Minimal email validation: requires something@something.something
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 # Global instances
 orchestrator: FastPipelineOrchestrator | None = None
 contact_storage: ContactStorage | None = None
@@ -234,11 +249,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 # Create FastAPI app
+# API docs are disabled in production to avoid information disclosure.
+# Set DEBUG=true to re-enable /docs, /redoc, and /openapi.json.
+_docs_url = "/docs" if SERVER.DEBUG else None
+_redoc_url = "/redoc" if SERVER.DEBUG else None
+_openapi_url = "/openapi.json" if SERVER.DEBUG else None
+
 app = FastAPI(
     title="Portfolio Chat API",
     description="Zero-trust LLM inference pipeline for Kellogg Brengel's portfolio",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # CORS middleware - origins configured via CORS_ORIGINS environment variable
@@ -249,7 +273,7 @@ app.add_middleware(
     allow_origins=list(SERVER.CORS_ORIGINS),
     allow_credentials=False,  # Not using cookies/sessions
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-Request-ID", "X-Consent"],
 )
 
 
@@ -263,6 +287,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        # jsdelivr allowed for Chart.js loaded by the admin dashboard.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'"
+        )
         return response
 
 
@@ -327,6 +359,44 @@ def get_client_ip(request: Request) -> str:
     return direct_ip
 
 
+def _validate_consent(request: Request) -> bool:
+    """Validate the X-Consent header as a bot filter.
+
+    The consent proof is a base64-encoded JSON payload with:
+    - t: page render timestamp (ms)
+    - e: elapsed time before consent click (ms) — must be >= 2000
+    - n: random nonce
+    Requests without a valid proof are rejected.
+    """
+    header = request.headers.get("x-consent")
+    if not header:
+        return False
+
+    try:
+        payload = json_module.loads(base64.b64decode(header))
+    except Exception:
+        return False
+
+    # Must have required fields
+    if not isinstance(payload, dict):
+        return False
+    elapsed = payload.get("e")
+    render_ts = payload.get("t")
+    if not isinstance(elapsed, (int, float)) or not isinstance(render_ts, (int, float)):
+        return False
+
+    # Timing check: human interaction should take at least 2 seconds
+    if elapsed < 2000:
+        return False
+
+    # Render timestamp should be recent (within last 24 hours)
+    now_ms = time.time() * 1000
+    if abs(now_ms - render_ts) > 86_400_000:
+        return False
+
+    return True
+
+
 @app.post("/chat", response_model=ChatResponseModel)
 async def chat(request: Request, body: ChatRequest) -> ChatResponseModel:
     """
@@ -338,6 +408,10 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponseModel:
 
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # Consent gate — rejects bots that skip the JS consent flow
+    if not _validate_consent(request):
+        raise HTTPException(status_code=403, detail="Consent required")
 
     start_time = time.time()
     client_ip = get_client_ip(request)
@@ -393,24 +467,33 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
     Streaming chat endpoint.
 
     Processes a message and streams the response as it's generated.
-    Uses Server-Sent Events format.
+    Uses Server-Sent Events with JSON payloads:
+      {"type":"chunk","content":"..."}   — streamed token
+      {"type":"meta","conversation_id":"...","domain":"..."}
+      {"type":"replace","content":"..."}  — safety replacement
+      {"type":"error","content":"..."}    — error message
+      {"type":"done"}                     — stream complete
     """
     global orchestrator
 
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
+    if not _validate_consent(request):
+        raise HTTPException(status_code=403, detail="Consent required")
+
     client_ip = get_client_ip(request)
 
     async def generate():
-        async for chunk in orchestrator.process_message_stream(
-            message=body.message,
-            conversation_id=body.conversation_id,
-            client_ip=client_ip,
-        ):
-            # SSE format
-            yield f"data: {chunk}\n\n"
-        yield "data: [DONE]\n\n"
+        try:
+            async for event in orchestrator.process_message_stream(
+                message=body.message,
+                conversation_id=body.conversation_id,
+                client_ip=client_ip,
+            ):
+                yield f"data: {json_module.dumps(event)}\n\n"
+        finally:
+            yield f"data: {json_module.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -418,6 +501,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
 
@@ -438,8 +522,18 @@ async def contact(request: Request, body: ContactRequest) -> ContactResponseMode
     client_ip = get_client_ip(request)
     ip_hash = hash_ip(client_ip)
 
-    # Basic email validation if provided
-    if body.sender_email and "@" not in body.sender_email:
+    # Rate limit contact submissions before any disk writes
+    rate_result = await contact_rate_limiter.check_rate_limit(ip_hash)
+    if rate_result.blocked:
+        logger.warning(f"Contact rate limited: {ip_hash}")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many contact submissions. Please wait before trying again.",
+            headers={"Retry-After": str(int(rate_result.retry_after) + 1)},
+        )
+
+    # Validate email format if provided
+    if body.sender_email and not _EMAIL_RE.match(body.sender_email):
         return ContactResponseModel(
             success=False,
             error="Invalid email format",
@@ -454,6 +548,9 @@ async def contact(request: Request, body: ContactRequest) -> ContactResponseMode
             ip_hash=ip_hash,
             conversation_id=body.conversation_id,
         )
+
+        # Record the request only after successful storage
+        await contact_rate_limiter.record_request(ip_hash)
 
         logger.info(f"Contact message stored: {stored.id}")
 

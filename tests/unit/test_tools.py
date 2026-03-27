@@ -58,7 +58,7 @@ class TestToolDefinitions:
         """Test that tools prompt section includes instructions."""
         section = get_tools_prompt_section()
 
-        assert "AVAILABLE TOOLS" in section
+        assert "MESSAGE TOOL" in section
         assert "tool_call" in section
         assert "save_message_for_kellogg" in section
 

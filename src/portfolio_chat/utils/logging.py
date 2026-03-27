@@ -241,20 +241,24 @@ class AuditLogger:
         request_id: str,
         conversation_id: str,
         turn: int,
-        raw_message: str,
         sanitized_message: str,
         ip_hash: str,
+        raw_message: str | None = None,
     ) -> None:
         """
-        Log the full user message for audit trail.
+        Log user message metadata for audit trail.
+
+        Raw message content is intentionally not logged to avoid persisting
+        potentially sensitive user input. Only sanitized message length is
+        recorded for size-tracking purposes.
 
         Args:
             request_id: Unique request ID.
             conversation_id: Conversation ID.
             turn: Conversation turn number.
-            raw_message: Original user input.
             sanitized_message: Message after sanitization.
             ip_hash: Anonymized IP hash.
+            raw_message: Ignored. Accepted for backward compatibility only.
         """
         self._logger.info(
             "User message received",
@@ -265,9 +269,6 @@ class AuditLogger:
                     "conversation_id": conversation_id,
                     "turn": turn,
                     "ip_hash": ip_hash,
-                    "raw_message": raw_message,
-                    "sanitized_message": sanitized_message,
-                    "raw_length": len(raw_message),
                     "sanitized_length": len(sanitized_message),
                 }
             },

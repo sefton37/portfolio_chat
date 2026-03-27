@@ -109,6 +109,30 @@ CONTEXT_SOURCES: tuple[ContextSource, ...] = (
         required=False,
         priority=4,
     ),
+    ContextSource(
+        name="repositories",
+        display_name="Repositories",
+        file_pattern="projects/repositories.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=6,
+    ),
+    ContextSource(
+        name="prefect",
+        display_name="Prefect",
+        file_pattern="projects/prefect-summary.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=4,
+    ),
+    ContextSource(
+        name="rogue_routine",
+        display_name="Rogue Routine",
+        file_pattern="projects/rogue-routine-summary.md",
+        domain=Domain.PROJECTS,
+        required=False,
+        priority=4,
+    ),
     # Hobbies domain
     ContextSource(
         name="first_robotics",

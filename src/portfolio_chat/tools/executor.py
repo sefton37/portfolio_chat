@@ -177,6 +177,64 @@ class ToolExecutor:
             results.append(result)
         return results
 
+    # Placeholder/template patterns that indicate the LLM hallucinated a tool call
+    # rather than using the visitor's actual words
+    _PLACEHOLDER_PATTERNS = {
+        "visitor's message here",
+        "your message here",
+        "visitor_message",
+        "user_message",
+        "message here",
+        "message text",
+        "question here",
+        "question about",
+        "[your message",
+        "[your question",
+        "[your email",
+        "[visitor",
+        "[your name",
+        "[insert",
+        "<<<user",
+        "<<<visitor",
+        "{message}",
+        "your visitor",
+        "your name",
+        "your email",
+    }
+
+    # Patterns indicating the LLM fabricated a message rather than using visitor words
+    _FABRICATION_PATTERNS = re.compile(
+        r"(?i)"
+        r"(?:^I have a question about Kellogg)"
+        r"|(?:^I(?:'m| am) interested in (?:learning|discussing|knowing) more about)"
+        r"|(?:^(?:The )?visitor (?:would like|wants|is asking|asked))"
+        r"|(?:^(?:Hi|Hello|Hey) Kellogg,? I(?:'m| am) \w+ (?:from|at|and))"  # LLM roleplaying as visitor
+        r"|(?:@example\.com)"
+        r"|(?:your@email)"
+        r"|(?:^What (?:does|is|are|did|can|programming|technologies).*(?:Kellogg|he)\b)"  # rephrased questions about Kellogg
+    )
+
+    # Placeholder email patterns
+    _PLACEHOLDER_EMAIL_PATTERNS = re.compile(
+        r"(?i)"
+        r"(?:@example\.com)"
+        r"|(?:^your@)"
+        r"|(?:^your\.email@)"
+        r"|(?:^visitor@)"
+        r"|(?:^\[.*(?:email|your).*\]$)"
+        r"|(?:^your email$)"
+    )
+
+    # Placeholder name patterns
+    _PLACEHOLDER_NAME_PATTERNS = re.compile(
+        r"(?i)"
+        r"(?:^Your Name$)"
+        r"|(?:^\[.*name.*\]$)"
+        r"|(?:^Visitor$)"
+        r"|(?:^User$)"
+        r"|(?:^Name$)"
+    )
+
     async def _handle_save_message(self, params: dict[str, Any]) -> ToolResult:
         """Handle the save_message_for_kellogg tool."""
         message = params.get("message")
@@ -188,12 +246,40 @@ class ToolExecutor:
                 result="No message provided to save.",
             )
 
+        # Reject placeholder/template text that the LLM copied from its prompt
+        message_lower = message.strip().lower()
+        for placeholder in self._PLACEHOLDER_PATTERNS:
+            if placeholder in message_lower:
+                logger.warning(f"Rejected placeholder message: {message[:80]}")
+                return ToolResult(
+                    success=False,
+                    tool_name="save_message_for_kellogg",
+                    result="Please ask the visitor what specific message they'd like to send to Kellogg.",
+                )
+
+        # Reject LLM-fabricated messages (not visitor's actual words)
+        if self._FABRICATION_PATTERNS.search(message.strip()):
+            logger.warning(f"Rejected fabricated message: {message[:80]}")
+            return ToolResult(
+                success=False,
+                tool_name="save_message_for_kellogg",
+                result="Please ask the visitor what specific message they'd like to send to Kellogg.",
+            )
+
         if not self._contact_storage:
             # Create storage if not provided
             self._contact_storage = ContactStorage()
 
         visitor_name = params.get("visitor_name")
         visitor_email = params.get("visitor_email")
+
+        # Strip placeholder names and emails the LLM fabricated
+        if visitor_email and self._PLACEHOLDER_EMAIL_PATTERNS.search(visitor_email.strip()):
+            logger.info(f"Stripped placeholder email: {visitor_email}")
+            visitor_email = None
+        if visitor_name and self._PLACEHOLDER_NAME_PATTERNS.search(visitor_name.strip()):
+            logger.info(f"Stripped placeholder name: {visitor_name}")
+            visitor_name = None
 
         try:
             stored = await self._contact_storage.store(

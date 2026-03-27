@@ -184,74 +184,119 @@ class FastPipelineOrchestrator:
                     ip_hash=ip_hash,
                 )
 
-            # ===== LAYER 2+3 COMBINED: Security + Intent =====
-            l23_start = time.time()
             conversation_history = conversation.get_history()
-            combined_result = await self.layer2_combined.classify(
-                message=sanitized_message,
-                conversation_history=conversation_history,
-                ip_hash=ip_hash,
-            )
-            metrics.layer_timings["L2+L3"] = time.time() - l23_start
 
-            if combined_result.status == CombinedStatus.BLOCKED:
-                metrics.blocked_at_layer = "L2"
-                if self.analytics_storage:
-                    await self.analytics_storage.log_message(
+            if PIPELINE.USE_COMBINED_CLASSIFIER:
+                # ===== LAYER 2+3 COMBINED: Security + Intent =====
+                l23_start = time.time()
+                combined_result = await self.layer2_combined.classify(
+                    message=sanitized_message,
+                    conversation_history=conversation_history,
+                    ip_hash=ip_hash,
+                )
+                metrics.layer_timings["L2+L3"] = time.time() - l23_start
+
+                if combined_result.status == CombinedStatus.BLOCKED:
+                    metrics.blocked_at_layer = "L2"
+                    if self.analytics_storage:
+                        await self.analytics_storage.log_message(
+                            conversation_id=conv_id,
+                            role="assistant",
+                            content="[BLOCKED]",
+                            ip_hash=ip_hash,
+                            response_time_ms=(time.time() - start_time) * 1000,
+                            blocked_at_layer="L2",
+                        )
+                    return self.layer9.deliver_error(
+                        error_type="blocked_input",
+                        request_id=request_id,
                         conversation_id=conv_id,
-                        role="assistant",
-                        content="[BLOCKED]",
+                        start_time=start_time,
                         ip_hash=ip_hash,
-                        response_time_ms=(time.time() - start_time) * 1000,
                         blocked_at_layer="L2",
+                        custom_message=combined_result.error_message,
                     )
-                return self.layer9.deliver_error(
-                    error_type="blocked_input",
-                    request_id=request_id,
-                    conversation_id=conv_id,
-                    start_time=start_time,
-                    ip_hash=ip_hash,
-                    blocked_at_layer="L2",
-                    custom_message=combined_result.error_message,
-                )
 
-            intent = combined_result.intent
-            if intent is None:
-                from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
-                intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
+                intent = combined_result.intent
+                if intent is None:
+                    from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
+                    intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
 
-            # Fast path for greetings - no need for full pipeline
-            from portfolio_chat.pipeline.layer3_intent import QuestionType
-            if intent.question_type == QuestionType.GREETING or intent.topic == "greeting":
-                greeting_response = (
-                    "Hello! I'm here to answer questions about Kellogg's work, skills, "
-                    "and projects. What would you like to know?"
-                )
-                if self.analytics_storage:
-                    await self.analytics_storage.log_message(
+                # Fast path for greetings - no need for full pipeline
+                from portfolio_chat.pipeline.layer3_intent import QuestionType
+                if intent.question_type == QuestionType.GREETING or intent.topic == "greeting":
+                    greeting_response = (
+                        "Hello! I'm here to answer questions about Kellogg's work, skills, "
+                        "and projects. What would you like to know?"
+                    )
+                    if self.analytics_storage:
+                        await self.analytics_storage.log_message(
+                            conversation_id=conv_id,
+                            role="assistant",
+                            content=greeting_response,
+                            ip_hash=ip_hash,
+                            domain="meta",
+                            response_time_ms=(time.time() - start_time) * 1000,
+                        )
+                    await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
+                    await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting_response)
+                    return self.layer9.deliver_success(
+                        response=greeting_response,
+                        domain=Domain.META,
+                        request_id=request_id,
                         conversation_id=conv_id,
-                        role="assistant",
-                        content=greeting_response,
+                        start_time=start_time,
                         ip_hash=ip_hash,
-                        domain="meta",
-                        response_time_ms=(time.time() - start_time) * 1000,
+                        layer_timings=metrics.layer_timings,
                     )
-                await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
-                await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting_response)
-                return self.layer9.deliver_success(
-                    response=greeting_response,
-                    domain=Domain.META,
-                    request_id=request_id,
-                    conversation_id=conv_id,
-                    start_time=start_time,
-                    ip_hash=ip_hash,
-                    layer_timings=metrics.layer_timings,
-                )
 
-            # ===== LAYER 4: Domain Routing =====
-            l4_start = time.time()
-            l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
-            metrics.layer_timings["L4"] = time.time() - l4_start
+                # ===== LAYER 4: Domain Routing =====
+                l4_start = time.time()
+                l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
+                metrics.layer_timings["L4"] = time.time() - l4_start
+
+            else:
+                # ===== CLASSIFIER-FREE MODE =====
+                # L1 regex handles hard jailbreak patterns. Route directly from
+                # message keywords. Saves ~1-2s by eliminating the classifier LLM call.
+                metrics.layer_timings["L2+L3"] = 0.0  # Skipped
+
+                l4_start = time.time()
+                l4_result = self.layer4.route_from_message(sanitized_message)
+                metrics.layer_timings["L4"] = time.time() - l4_start
+
+                # Greeting fast path (detected by route_from_message)
+                if l4_result.domain == Domain.META and l4_result.confidence >= 0.9:
+                    # Check if it was a greeting
+                    msg_lower = sanitized_message.strip().lower()
+                    greetings = {"hi", "hello", "hey", "howdy", "greetings", "yo", "sup", "hiya"}
+                    first_word = msg_lower.split()[0] if msg_lower.split() else ""
+                    if first_word in greetings and len(sanitized_message.strip()) < 20:
+                        greeting_response = (
+                            "Hello! I'm here to answer questions about Kellogg's work, skills, "
+                            "and projects. What would you like to know?"
+                        )
+                        if self.analytics_storage:
+                            await self.analytics_storage.log_message(
+                                conversation_id=conv_id,
+                                role="assistant",
+                                content=greeting_response,
+                                ip_hash=ip_hash,
+                                domain="meta",
+                                response_time_ms=(time.time() - start_time) * 1000,
+                            )
+                        await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
+                        await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting_response)
+                        return self.layer9.deliver_success(
+                            response=greeting_response,
+                            domain=Domain.META,
+                            request_id=request_id,
+                            conversation_id=conv_id,
+                            start_time=start_time,
+                            ip_hash=ip_hash,
+                            layer_timings=metrics.layer_timings,
+                        )
+
             metrics.domain_matched = l4_result.domain.value
 
             # ===== LAYER 5: Context Retrieval =====
@@ -447,35 +492,51 @@ class FastPipelineOrchestrator:
 
             sanitized_message = l1_result.sanitized_input or message
 
-            # Combined security + intent (L2+L3)
             conversation_history = conversation.get_history()
-            combined_result = await self.layer2_combined.classify(
-                message=sanitized_message,
-                conversation_history=conversation_history,
-                ip_hash=ip_hash,
-            )
 
-            if combined_result.status == CombinedStatus.BLOCKED:
-                yield {"type": "error", "content": combined_result.error_message or "I can only answer questions about Kellogg's work."}
-                return
+            if PIPELINE.USE_COMBINED_CLASSIFIER:
+                # Combined security + intent (L2+L3)
+                combined_result = await self.layer2_combined.classify(
+                    message=sanitized_message,
+                    conversation_history=conversation_history,
+                    ip_hash=ip_hash,
+                )
 
-            intent = combined_result.intent
-            if intent is None:
-                from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
-                intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
+                if combined_result.status == CombinedStatus.BLOCKED:
+                    yield {"type": "error", "content": combined_result.error_message or "I can only answer questions about Kellogg's work."}
+                    return
 
-            # Fast path for greetings
-            from portfolio_chat.pipeline.layer3_intent import QuestionType
-            if intent.question_type == QuestionType.GREETING or intent.topic == "greeting":
-                greeting = "Hello! I'm here to answer questions about Kellogg's work, skills, and projects. What would you like to know?"
-                yield {"type": "chunk", "content": greeting}
-                yield {"type": "meta", "conversation_id": conv_id, "domain": "meta"}
-                await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
-                await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting)
-                return
+                intent = combined_result.intent
+                if intent is None:
+                    from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
+                    intent = Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.5)
 
-            # Routing (L4) and Context (L5)
-            l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
+                # Fast path for greetings
+                from portfolio_chat.pipeline.layer3_intent import QuestionType
+                if intent.question_type == QuestionType.GREETING or intent.topic == "greeting":
+                    greeting = "Hello! I'm here to answer questions about Kellogg's work, skills, and projects. What would you like to know?"
+                    yield {"type": "chunk", "content": greeting}
+                    yield {"type": "meta", "conversation_id": conv_id, "domain": "meta"}
+                    await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
+                    await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting)
+                    return
+
+                l4_result = self.layer4.route(intent=intent, original_message=sanitized_message)
+            else:
+                # Classifier-free mode — route from keywords only
+                l4_result = self.layer4.route_from_message(sanitized_message)
+
+                # Greeting fast path
+                msg_lower = sanitized_message.strip().lower()
+                greetings = {"hi", "hello", "hey", "howdy", "greetings", "yo", "sup", "hiya"}
+                first_word = msg_lower.split()[0] if msg_lower.split() else ""
+                if first_word in greetings and len(sanitized_message.strip()) < 20:
+                    greeting = "Hello! I'm here to answer questions about Kellogg's work, skills, and projects. What would you like to know?"
+                    yield {"type": "chunk", "content": greeting}
+                    yield {"type": "meta", "conversation_id": conv_id, "domain": "meta"}
+                    await self.conversation_manager.add_message(conv_id, MessageRole.USER, sanitized_message)
+                    await self.conversation_manager.add_message(conv_id, MessageRole.ASSISTANT, greeting)
+                    return
             if PIPELINE.SEMANTIC_RETRIEVAL_ENABLED and isinstance(self.layer5, SemanticContextRetriever):
                 l5_result = await self.layer5.retrieve_semantic(
                     domain=l4_result.domain,

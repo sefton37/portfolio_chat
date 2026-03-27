@@ -97,6 +97,10 @@ class Layer1Sanitizer:
         (r"(?i)base64[:\s]", "encoding_trick"),
         (r"(?i)decode\s+this[:\s]", "encoding_trick"),
         (r"(?i)rot13[:\s]", "encoding_trick"),
+        # Additional patterns for classifier-free mode (Phase 3)
+        (r"(?i)forget\s+(your|all|previous)\s+(instructions?|rules|guidelines)", "instruction_override"),
+        (r"(?i)you\s+are\s+now\s+[A-Z]", "roleplay_attack"),
+        (r"(?i)pretend\s+you\s+(have\s+no|are\s+without)\s+(restrictions?|rules|guidelines)", "roleplay_attack"),
     ]
 
     # Homoglyph mappings for common Unicode confusables

@@ -402,6 +402,71 @@ class Layer4Router:
             error_message="I'm designed to answer questions about Kellogg's work and projects. For other topics, I'd recommend a general AI assistant.",
         )
 
+    def route_from_message(self, message: str) -> Layer4Result:
+        """
+        Route directly from message text without a classifier-produced intent.
+
+        Used when USE_COMBINED_CLASSIFIER is false. Builds a synthetic Intent
+        from keyword analysis and delegates to the standard route() method.
+
+        Args:
+            message: The sanitized user message.
+
+        Returns:
+            Layer4Result with the matched domain.
+        """
+        message_stripped = message.strip()
+        message_lower = message_stripped.lower()
+
+        # Detect greetings
+        greetings = {"hi", "hello", "hey", "howdy", "greetings", "yo", "sup", "hiya"}
+        first_word = message_lower.split()[0] if message_lower.split() else ""
+        if first_word in greetings and len(message_stripped) < 20:
+            synthetic_intent = Intent(
+                topic="greeting",
+                question_type=QuestionType.GREETING,
+                confidence=0.9,
+            )
+            return self.route(intent=synthetic_intent, original_message=message)
+
+        # Detect contact intent via explicit phrases
+        has_contact = any(phrase in message_lower for phrase in self.CONTACT_PHRASES)
+        if has_contact:
+            synthetic_intent = Intent(
+                topic="message",
+                question_type=QuestionType.AMBIGUOUS,
+                confidence=0.7,
+            )
+            return self.route(intent=synthetic_intent, original_message=message)
+
+        # Check keyword matches to infer a topic
+        keyword_matches: dict[Domain, int] = {}
+        for keyword, domain in self.KEYWORD_HINTS.items():
+            if keyword in message_lower:
+                keyword_matches[domain] = keyword_matches.get(domain, 0) + 1
+
+        # Infer topic from best keyword domain
+        if keyword_matches:
+            best_domain = max(keyword_matches, key=keyword_matches.get)  # type: ignore
+            topic_reverse = {
+                Domain.PROFESSIONAL: "work_experience",
+                Domain.PROJECTS: "projects",
+                Domain.HOBBIES: "hobbies",
+                Domain.PHILOSOPHY: "philosophy",
+                Domain.LINKEDIN: "contact",
+                Domain.META: "chat_system",
+            }
+            topic = topic_reverse.get(best_domain, "general")
+        else:
+            topic = "general"
+
+        synthetic_intent = Intent(
+            topic=topic,
+            question_type=QuestionType.AMBIGUOUS,
+            confidence=0.6,
+        )
+        return self.route(intent=synthetic_intent, original_message=message)
+
     @staticmethod
     def get_domain_description(domain: Domain) -> str:
         """Get a human-readable description of a domain."""

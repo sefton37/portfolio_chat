@@ -197,19 +197,11 @@ def network_gateway(rate_limiter):
 
 
 @pytest.fixture
-def jailbreak_detector(mock_ollama_client):
-    """Create a jailbreak detector with mock client."""
-    from portfolio_chat.pipeline.layer2_jailbreak import Layer2JailbreakDetector
+def combined_classifier(mock_ollama_client):
+    """Create a combined classifier with mock client."""
+    from portfolio_chat.pipeline.layer2_combined import Layer2CombinedClassifier
 
-    return Layer2JailbreakDetector(client=mock_ollama_client)
-
-
-@pytest.fixture
-def intent_parser(mock_ollama_client):
-    """Create an intent parser with mock client."""
-    from portfolio_chat.pipeline.layer3_intent import Layer3IntentParser
-
-    return Layer3IntentParser(client=mock_ollama_client)
+    return Layer2CombinedClassifier(client=mock_ollama_client)
 
 
 @pytest.fixture
@@ -315,19 +307,11 @@ def generator_with_tools(mock_ollama_client, contact_storage):
 
 
 @pytest.fixture
-def reviser(mock_ollama_client):
-    """Create a response reviser with mock client."""
-    from portfolio_chat.pipeline.layer7_revise import Layer7Reviser
+def fast_safety_checker():
+    """Create a fast pattern-based safety checker."""
+    from portfolio_chat.pipeline.layer8_fast import Layer8FastChecker
 
-    return Layer7Reviser(client=mock_ollama_client)
-
-
-@pytest.fixture
-def safety_checker(mock_ollama_client):
-    """Create a safety checker with mock client."""
-    from portfolio_chat.pipeline.layer8_safety import Layer8SafetyChecker
-
-    return Layer8SafetyChecker(client=mock_ollama_client)
+    return Layer8FastChecker()
 
 
 @pytest.fixture

@@ -282,38 +282,39 @@ class Layer1ResultFactory:
         )
 
 
-class Layer2ResultFactory:
-    """Factory for creating Layer2 jailbreak detection results."""
+class CombinedResultFactory:
+    """Factory for creating combined classifier results."""
 
     @staticmethod
-    def safe(confidence: float = 0.95):
-        """Create a safe detection result."""
-        from portfolio_chat.pipeline.layer2_jailbreak import (
-            Layer2Result,
-            Layer2Status,
+    def safe():
+        """Create a safe classification result."""
+        from portfolio_chat.pipeline.layer2_combined import (
+            CombinedResult,
+            CombinedStatus,
             JailbreakReason,
         )
+        from portfolio_chat.pipeline.layer3_intent import Intent, QuestionType
 
-        return Layer2Result(
-            status=Layer2Status.SAFE,
+        return CombinedResult(
+            status=CombinedStatus.SAFE,
             passed=True,
-            reason=JailbreakReason.NONE,
-            confidence=confidence,
+            jailbreak_reason=JailbreakReason.NONE,
+            intent=Intent(topic="general", question_type=QuestionType.AMBIGUOUS, confidence=0.8),
         )
 
     @staticmethod
-    def blocked(reason: str = "instruction_override", confidence: float = 0.92):
-        """Create a blocked detection result."""
-        from portfolio_chat.pipeline.layer2_jailbreak import (
-            Layer2Result,
-            Layer2Status,
+    def blocked(reason: str = "instruction_override"):
+        """Create a blocked classification result."""
+        from portfolio_chat.pipeline.layer2_combined import (
+            CombinedResult,
+            CombinedStatus,
             JailbreakReason,
         )
 
-        return Layer2Result(
-            status=Layer2Status.BLOCKED,
+        return CombinedResult(
+            status=CombinedStatus.BLOCKED,
             passed=False,
-            reason=JailbreakReason(reason),
-            confidence=confidence,
+            jailbreak_reason=JailbreakReason(reason),
+            jailbreak_confidence=0.8,
             error_message="I can only answer questions about Kellogg's professional background",
         )

@@ -1,11 +1,13 @@
 """
 Admin router for analytics dashboard.
 
-Provides localhost-only API endpoints for viewing analytics data.
+Provides bearer-token-protected API endpoints for viewing analytics data.
+All routes require a valid Authorization: Bearer <ADMIN_TOKEN> header.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 import re
 from datetime import datetime
@@ -64,24 +66,40 @@ def get_contact_storage() -> ContactStorage:
     return _contact_storage
 
 
-async def localhost_only(request: Request) -> None:
+async def admin_bearer_auth(request: Request) -> None:
     """
-    Dependency that restricts access to localhost only.
+    Dependency that enforces bearer-token authentication on all /admin/* routes.
 
-    Raises HTTPException 403 if not from localhost.
+    Checks the Authorization: Bearer <token> header using a constant-time
+    comparison (hmac.compare_digest) against ANALYTICS.ADMIN_TOKEN.
+
+    Raises:
+        HTTPException 404 — admin routes disabled (ADMIN_ENABLED=false)
+        HTTPException 401 — Authorization header absent or malformed
+        HTTPException 403 — token present but incorrect
     """
     if not ANALYTICS.ADMIN_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
 
-    client_ip = request.client.host if request.client else "unknown"
-    allowed_ips = ("127.0.0.1", "::1", "localhost")
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        logger.warning("Admin request missing valid Authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    if client_ip not in allowed_ips:
-        logger.warning(f"Admin access denied from {client_ip}")
-        raise HTTPException(status_code=403, detail="Admin access restricted to localhost")
+    provided_token = auth_header[len("Bearer "):]
+    expected_token = ANALYTICS.ADMIN_TOKEN
+
+    # Constant-time comparison to prevent timing attacks
+    if not hmac.compare_digest(provided_token.encode(), expected_token.encode()):
+        logger.warning("Admin request rejected: invalid bearer token")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
-@admin_router.get("", response_class=HTMLResponse, dependencies=[Depends(localhost_only)])
+@admin_router.get("", response_class=HTMLResponse, dependencies=[Depends(admin_bearer_auth)])
 async def admin_dashboard() -> HTMLResponse:
     """
     Serve the admin dashboard HTML page.
@@ -100,7 +118,7 @@ async def admin_dashboard() -> HTMLResponse:
     return HTMLResponse(content=content)
 
 
-@admin_router.get("/analytics/stats", dependencies=[Depends(localhost_only)])
+@admin_router.get("/analytics/stats", dependencies=[Depends(admin_bearer_auth)])
 async def get_stats(
     start_date: str | None = Query(None, description="Start date (ISO format)"),
     end_date: str | None = Query(None, description="End date (ISO format)"),
@@ -118,7 +136,7 @@ async def get_stats(
     return stats.to_dict()
 
 
-@admin_router.get("/analytics/timeseries", dependencies=[Depends(localhost_only)])
+@admin_router.get("/analytics/timeseries", dependencies=[Depends(admin_bearer_auth)])
 async def get_timeseries(
     start_date: str | None = Query(None, description="Start date (ISO format)"),
     end_date: str | None = Query(None, description="End date (ISO format)"),
@@ -143,7 +161,7 @@ async def get_timeseries(
     )
 
 
-@admin_router.get("/analytics/conversations", dependencies=[Depends(localhost_only)])
+@admin_router.get("/analytics/conversations", dependencies=[Depends(admin_bearer_auth)])
 async def list_conversations(
     limit: int = Query(50, ge=1, le=200, description="Max conversations to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -167,7 +185,7 @@ async def list_conversations(
     )
 
 
-@admin_router.get("/analytics/conversations/{conversation_id}", dependencies=[Depends(localhost_only)])
+@admin_router.get("/analytics/conversations/{conversation_id}", dependencies=[Depends(admin_bearer_auth)])
 async def get_conversation(
     conversation_id: str,
     service: AnalyticsService = Depends(get_service),
@@ -198,7 +216,7 @@ def _parse_date(date_str: str) -> datetime | None:
 
 # ===== Inbox Endpoints =====
 
-@admin_router.get("/inbox", dependencies=[Depends(localhost_only)])
+@admin_router.get("/inbox", dependencies=[Depends(admin_bearer_auth)])
 async def list_inbox_messages(
     limit: int = Query(50, ge=1, le=200, description="Max messages to return"),
     storage: ContactStorage = Depends(get_contact_storage),
@@ -217,7 +235,7 @@ async def list_inbox_messages(
     }
 
 
-@admin_router.get("/inbox/{message_id}", dependencies=[Depends(localhost_only)])
+@admin_router.get("/inbox/{message_id}", dependencies=[Depends(admin_bearer_auth)])
 async def get_inbox_message(
     message_id: str,
     storage: ContactStorage = Depends(get_contact_storage),

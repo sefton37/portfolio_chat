@@ -190,6 +190,42 @@ class AnalyticsConfig:
     # Admin dashboard enabled (requires localhost access)
     ADMIN_ENABLED: bool = _env_str("ADMIN_ENABLED", "true").lower() == "true"
 
+    # Shared secret for admin bearer-token auth. Must be >=32 chars; the server
+    # refuses to start with admin enabled if this is unset or too short.
+    ADMIN_TOKEN: str = _env_str("ADMIN_TOKEN", "")
+
+    def __post_init__(self) -> None:
+        if self.ADMIN_ENABLED:
+            if not self.ADMIN_TOKEN:
+                raise ValueError(
+                    "ADMIN_TOKEN env var must be set when ADMIN_ENABLED is true (fail-secure)"
+                )
+            if len(self.ADMIN_TOKEN) < 32:
+                raise ValueError(
+                    f"ADMIN_TOKEN must be at least 32 characters (got {len(self.ADMIN_TOKEN)})"
+                )
+
+
+@dataclass(frozen=True)
+class ConsentConfig:
+    """Consent-token configuration for bot-proof gate."""
+
+    # HMAC secret used to sign and verify consent tokens. Must be set and >=32 chars.
+    CONSENT_SECRET: str = _env_str("CONSENT_SECRET", "")
+
+    # Token TTL in seconds (5 minutes)
+    TOKEN_TTL_SECONDS: int = 300
+
+    def __post_init__(self) -> None:
+        if not self.CONSENT_SECRET:
+            raise ValueError(
+                "CONSENT_SECRET env var must be set (fail-secure)"
+            )
+        if len(self.CONSENT_SECRET) < 32:
+            raise ValueError(
+                f"CONSENT_SECRET must be at least 32 characters (got {len(self.CONSENT_SECRET)})"
+            )
+
 
 # Module-level singletons (immutable)
 SECURITY = SecurityLimits()
@@ -200,6 +236,7 @@ PIPELINE = PipelineConfig()
 SERVER = ServerConfig()
 PATHS = PathConfig()
 ANALYTICS = AnalyticsConfig()
+CONSENT = ConsentConfig()
 
 
 @lru_cache(maxsize=1)

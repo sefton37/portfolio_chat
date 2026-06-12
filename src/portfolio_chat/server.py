@@ -8,9 +8,12 @@ Provides /chat, /health, and /metrics endpoints.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json as json_module
 import logging
 import re
+import secrets
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -35,7 +38,7 @@ from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
 from portfolio_chat.admin.router import admin_router
-from portfolio_chat.config import ANALYTICS, PIPELINE, SECURITY, SERVER
+from portfolio_chat.config import ANALYTICS, CONSENT, PIPELINE, SECURITY, SERVER
 from portfolio_chat.pipeline.layer5_context import SemanticContextRetriever
 from portfolio_chat.contact.storage import ContactStorage
 from portfolio_chat.pipeline.orchestrator_fast import FastPipelineOrchestrator
@@ -300,7 +303,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Mount admin router and static files (localhost-only access enforced in router)
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> Any:
+    """Global exception handler — returns a generic 500 body without stack traces."""
+    from fastapi.responses import JSONResponse
+
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc!r}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+# Mount admin router and static files (bearer-token auth enforced in router)
 if ANALYTICS.ADMIN_ENABLED:
     app.include_router(admin_router)
     # Mount static files for admin dashboard
@@ -359,42 +375,83 @@ def get_client_ip(request: Request) -> str:
     return direct_ip
 
 
+def _make_consent_token() -> tuple[str, int]:
+    """
+    Issue a new server-signed HMAC-SHA256 consent token.
+
+    Returns:
+        (token_hex, expires_at_unix_ms) where expires_at is now + TTL.
+
+    The token encodes: HMAC-SHA256(CONSENT_SECRET, "<timestamp_ms>:<nonce>")
+    prefixed with the timestamp and nonce so the verifier can reconstruct the
+    message without storing server-side state.
+
+    Wire format (hex-encoded):
+        <timestamp_ms_hex>.<nonce_hex>.<hmac_hex>
+    """
+    now_ms = int(time.time() * 1000)
+    nonce = secrets.token_hex(16)
+    message = f"{now_ms}:{nonce}".encode()
+    mac = hmac.new(CONSENT.CONSENT_SECRET.encode(), message, hashlib.sha256).hexdigest()
+    token = f"{now_ms}.{nonce}.{mac}"
+    expires_at = now_ms + CONSENT.TOKEN_TTL_SECONDS * 1000
+    return token, expires_at
+
+
 def _validate_consent(request: Request) -> bool:
     """Validate the X-Consent header as a bot filter.
 
-    The consent proof is a base64-encoded JSON payload with:
-    - t: page render timestamp (ms)
-    - e: elapsed time before consent click (ms) — must be >= 2000
-    - n: random nonce
-    Requests without a valid proof are rejected.
+    Expects a server-signed HMAC token previously issued by /consent-token.
+    Wire format: <timestamp_ms>.<nonce>.<hmac_hex>
+
+    Rejects:
+    - Missing or malformed token
+    - HMAC mismatch (forged token)
+    - Token older than CONSENT.TOKEN_TTL_SECONDS
     """
     header = request.headers.get("x-consent")
     if not header:
         return False
 
+    parts = header.split(".")
+    if len(parts) != 3:
+        return False
+
+    timestamp_str, nonce, provided_mac = parts
+
     try:
-        payload = json_module.loads(base64.b64decode(header))
-    except Exception:
+        token_ms = int(timestamp_str)
+    except ValueError:
         return False
 
-    # Must have required fields
-    if not isinstance(payload, dict):
-        return False
-    elapsed = payload.get("e")
-    render_ts = payload.get("t")
-    if not isinstance(elapsed, (int, float)) or not isinstance(render_ts, (int, float)):
+    # TTL check — reject stale tokens
+    now_ms = int(time.time() * 1000)
+    age_seconds = (now_ms - token_ms) / 1000
+    if age_seconds < 0 or age_seconds > CONSENT.TOKEN_TTL_SECONDS:
         return False
 
-    # Timing check: human interaction should take at least 2 seconds
-    if elapsed < 2000:
-        return False
-
-    # Render timestamp should be recent (within last 24 hours)
-    now_ms = time.time() * 1000
-    if abs(now_ms - render_ts) > 86_400_000:
+    # HMAC verification — constant-time comparison
+    message = f"{token_ms}:{nonce}".encode()
+    expected_mac = hmac.new(CONSENT.CONSENT_SECRET.encode(), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(provided_mac, expected_mac):
         return False
 
     return True
+
+
+@app.get("/consent-token")
+async def consent_token() -> dict[str, object]:
+    """
+    Issue a short-TTL server-signed consent token.
+
+    The frontend calls this before displaying the consent UI.  The returned
+    token must be included in the X-Consent header of every /chat request.
+
+    Returns:
+        {"token": "<hex>", "expires_at": <unix_ms>}
+    """
+    token, expires_at = _make_consent_token()
+    return {"token": token, "expires_at": expires_at}
 
 
 @app.post("/chat", response_model=ChatResponseModel)

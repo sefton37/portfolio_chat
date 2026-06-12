@@ -16,9 +16,13 @@ from portfolio_chat.models.ollama_client import (
     AsyncOllamaClient,
     OllamaError,
 )
+from portfolio_chat.pipeline.layer1_sanitize import Layer1Sanitizer
 from portfolio_chat.pipeline.layer4_route import Domain
 from portfolio_chat.tools.definitions import get_tools_prompt_section
 from portfolio_chat.tools.executor import ToolCall, ToolExecutor, ToolResult
+
+# Singleton sanitizer — stateless, safe to reuse across requests
+_history_sanitizer = Layer1Sanitizer()
 
 logger = logging.getLogger(__name__)
 
@@ -158,16 +162,27 @@ DOMAIN: {domain}
             parts.append("```")
             parts.append("")
 
-        # Add conversation history summary if present
+        # Add conversation history summary if present.
+        # Each prior turn's content is sanitized before injection to prevent
+        # multi-turn prompt injection (MED finding — spec #173).
+        # Sanitization operates on a copy; the conversation manager's stored
+        # content is never altered.
         if conversation_history and len(conversation_history) > 0:
             parts.append("RECENT CONVERSATION:")
-            # Show last 3 exchanges
+            # Show last 3 exchanges (6 messages)
             for msg in conversation_history[-6:]:
                 role = "Visitor" if msg["role"] == "user" else "Talking Rock"
-                content = msg["content"][:300]  # Truncate long messages
-                if len(msg["content"]) > 300:
-                    content += "..."
-                parts.append(f"{role}: {content}")
+                raw_content = msg["content"]
+                # Run the existing L1 sanitizer over history content
+                san_result = _history_sanitizer.sanitize(raw_content)
+                if san_result.passed and san_result.sanitized_input is not None:
+                    safe_content = san_result.sanitized_input[:300]
+                    if len(san_result.sanitized_input) > 300:
+                        safe_content += "..."
+                else:
+                    # Blocked — replace with placeholder so injection payload is dropped
+                    safe_content = "[redacted]"
+                parts.append(f"{role}: {safe_content}")
             parts.append("")
 
         # Add tool results if present (from a previous tool call)

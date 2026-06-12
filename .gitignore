@@ -73,6 +73,7 @@ Thumbs.db
 
 # Data — conversation logs contain IP hashes, cache is ephemeral
 data/contacts/*.json
+data/contacts/.sweeper_hwm
 !data/contacts/.gitkeep
 data/conversations/
 data/cache/

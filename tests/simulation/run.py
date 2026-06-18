@@ -50,12 +50,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", type=int, default=0, help="Run ID to analyze (for --analyze-only)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     parser.add_argument("--notes", default="", help="Notes to attach to this run")
+    parser.add_argument(
+        "--allow-production-side-effects",
+        action="store_true",
+        help="REQUIRED to run live. The simulator sends real chat requests to --url, which "
+        "writes real contact messages (the sweeper emails them) and analytics. Only pass this "
+        "when --url is a disposable dev server. For safe multi-turn model testing, prefer "
+        "`python -m tests.battery.run` (in-process, side-effects isolated).",
+    )
 
     return parser.parse_args()
 
 
 async def run_simulation(args: argparse.Namespace) -> tuple[int, SimulationDB, Path]:
     """Execute the simulation and return (run_id, db, output_dir)."""
+    if not getattr(args, "allow_production_side_effects", False):
+        print(
+            "REFUSING TO RUN: the simulator sends real chat traffic to "
+            f"{args.url}, which writes real contact messages (the sweeper emails them) "
+            "and analytics. Re-run with --allow-production-side-effects ONLY if --url is a "
+            "disposable dev server, or use `python -m tests.battery.run` (in-process, isolated)."
+        )
+        sys.exit(2)
+
     # Set up output directory
     if args.output:
         output_dir = Path(args.output)

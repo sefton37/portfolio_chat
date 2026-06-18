@@ -18,9 +18,11 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from portfolio_chat.contact.storage import ContactStorage
@@ -517,7 +519,11 @@ class BenchmarkEngine:
         orchestrator = _InstrumentedOrchestrator(
             ollama_client=generator_client,
             conversation_manager=ConversationManager(),
-            contact_storage=ContactStorage(),
+            # Isolate: route the contact tool to a throwaway dir so benchmark
+            # traffic never lands in prod data/contacts (which the sweeper emails).
+            contact_storage=ContactStorage(
+                storage_dir=Path(tempfile.mkdtemp(prefix="benchmark_contacts_"))
+            ),
             analytics_storage=None,
         )
 

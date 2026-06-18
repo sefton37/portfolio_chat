@@ -77,6 +77,13 @@ data/contacts/.sweeper_hwm
 !data/contacts/.gitkeep
 data/conversations/
 data/cache/
+# Quarantined test-generated contact messages (PII — never commit)
+data/contacts_quarantine/
+# Battery harness run artifacts (regenerated each run)
+tests/battery/results/*.db
+tests/battery/results/*.md
+tests/battery/results/*.json
+!tests/battery/results/.gitkeep
 
 # Simulation results (large binary DBs)
 tests/simulation/results/

@@ -16,6 +16,7 @@ from tests.battery.db import BatteryDB
 from tests.battery.engine import (
     InstrumentedOllamaClient,
     LAYER2_ATTACKS,
+    _parse_judge_score,
     _response_blocked,
 )
 from tests.battery.report import _compute_pareto, _recommended_pair
@@ -407,3 +408,25 @@ class TestResponseBlocked:
             (run_id,),
         ).fetchone()[0]
         assert n == 1, "blocked legitimate turn must be counted as a false positive"
+
+
+class TestParseJudgeScore:
+    """Regression guard: the judge prompt contains literal JSON braces, so the
+    fill must use .replace (not .format), and the parse must tolerate fences/prose.
+    Before the fix, judge_score was NULL for every turn."""
+
+    def test_plain_json(self):
+        assert _parse_judge_score('{"score": 0.8}') == 0.8
+
+    def test_markdown_fenced(self):
+        assert _parse_judge_score('```json\n{"score": 0.7}\n```') == 0.7
+
+    def test_prose_then_json(self):
+        assert _parse_judge_score('My rating: {"score": 0.9, "reason": "good"}') == 0.9
+
+    def test_unparseable_returns_none(self):
+        assert _parse_judge_score("I can't rate this") is None
+
+    def test_empty_returns_none(self):
+        assert _parse_judge_score("") is None
+        assert _parse_judge_score(None) is None

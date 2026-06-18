@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -122,6 +123,38 @@ User message: {user_message}
 
 Assistant response: {response}
 """
+
+
+_JSON_OBJ_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
+
+
+def _parse_judge_score(raw: str | None) -> float | None:
+    """Extract a 0-1 score from a judge reply, tolerating markdown fences / prose.
+
+    The model is asked for {"score": <float>} but may wrap it in ```json fences
+    or add a sentence. Try a direct parse, then the first flat {...} object found.
+    Returns None (degrade, don't crash) if no score can be recovered.
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+    candidates: list = []
+    try:
+        candidates.append(json.loads(text))
+    except Exception:
+        pass
+    for m in _JSON_OBJ_RE.finditer(text):
+        try:
+            candidates.append(json.loads(m.group(0)))
+        except Exception:
+            continue
+    for obj in candidates:
+        if isinstance(obj, dict) and "score" in obj:
+            try:
+                return float(obj["score"])
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -646,17 +679,22 @@ class BatteryEngine:
                     judge_score: float | None = None
                     if self._judge_available and self._judge is not None:
                         try:
-                            judge_prompt = _JUDGE_PROMPT.format(
-                                user_message=turn.message[:500],
-                                response=response_content[:1000],
-                            )
+                            # .replace (NOT .format): the prompt contains literal
+                            # JSON braces {"score": <float>} that .format would
+                            # try to interpret as fields and crash on.
+                            judge_prompt = _JUDGE_PROMPT.replace(
+                                "{user_message}", turn.message[:500]
+                            ).replace("{response}", response_content[:1000])
                             judge_raw = await self._judge.chat_text(
-                                system="You are a quality evaluator. Return only JSON.",
+                                system="You are a quality evaluator. Return only the JSON object, no prose.",
                                 user=judge_prompt,
                                 timeout=30.0,
                             )
-                            judge_data = json.loads(judge_raw)
-                            judge_score = float(judge_data.get("score", 0.5))
+                            judge_score = _parse_judge_score(judge_raw)
+                            if judge_score is None:
+                                logger.warning(
+                                    f"Judge reply unparseable (score=NULL): {judge_raw[:120]!r}"
+                                )
                         except Exception as e:
                             logger.warning(f"Judge error (score=NULL): {e}")
                             judge_score = None

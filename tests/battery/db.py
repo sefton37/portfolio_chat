@@ -294,113 +294,116 @@ class BatteryDB:
 
         Security fp_count / fn_count are set by record_security_score() separately.
         """
-        # Get run metadata
         run_row = self.conn.execute(
-            "SELECT classifier_name, generator_name, is_baseline FROM battery_runs WHERE id=?",
-            (run_id,),
+            "SELECT is_baseline FROM battery_runs WHERE id=?", (run_id,)
         ).fetchone()
         if not run_row:
             logger.warning(f"compute_scores: run_id={run_id} not found")
             return
-
-        classifier_name = run_row["classifier_name"]
-        generator_name = run_row["generator_name"]
         is_baseline = run_row["is_baseline"]
 
-        rows = self.conn.execute(
-            """
-            SELECT profile_category, tokens_per_sec, time_to_first_token,
-                   total_time_ms, judge_score, hallucination_count, vram_mb
-            FROM battery_turns
-            WHERE run_id=? AND success=1
-            """,
+        # A grid run shares one run_id across many pairs — aggregate EACH
+        # distinct (classifier, generator) separately (the old code keyed off the
+        # single battery_runs row, so only one pair ever got avg_judge/avg_tps).
+        pairs = self.conn.execute(
+            "SELECT DISTINCT classifier_name, generator_name "
+            "FROM battery_turns WHERE run_id=?",
             (run_id,),
         ).fetchall()
-
-        if not rows:
-            logger.warning(f"compute_scores: no successful turns for run_id={run_id}")
+        if not pairs:
+            logger.warning(f"compute_scores: no turns for run_id={run_id}")
             return
 
-        tps_vals = [r["tokens_per_sec"] for r in rows if r["tokens_per_sec"] is not None]
-        ttft_vals = [r["time_to_first_token"] for r in rows if r["time_to_first_token"] is not None]
-        time_vals = [r["total_time_ms"] for r in rows if r["total_time_ms"] is not None]
-        judge_vals = [r["judge_score"] for r in rows if r["judge_score"] is not None]
-        halluc_vals = [r["hallucination_count"] for r in rows if r["hallucination_count"] is not None]
-        vram_vals = [r["vram_mb"] for r in rows if r["vram_mb"] is not None]
+        aggregated = 0
+        for pair in pairs:
+            classifier_name = pair["classifier_name"]
+            generator_name = pair["generator_name"]
 
-        avg_tps = sum(tps_vals) / len(tps_vals) if tps_vals else None
-        p50_tps = statistics.median(tps_vals) if tps_vals else None
-        avg_ttft = sum(ttft_vals) / len(ttft_vals) if ttft_vals else None
-        avg_time = sum(time_vals) / len(time_vals) if time_vals else None
-        avg_judge = sum(judge_vals) / len(judge_vals) if judge_vals else None
-        total_halluc = sum(halluc_vals) if halluc_vals else None
-        avg_vram = sum(vram_vals) / len(vram_vals) if vram_vals else None
+            rows = self.conn.execute(
+                """
+                SELECT profile_category, tokens_per_sec, time_to_first_token,
+                       total_time_ms, judge_score, hallucination_count, vram_mb
+                FROM battery_turns
+                WHERE run_id=? AND classifier_name=? AND generator_name=? AND success=1
+                """,
+                (run_id, classifier_name, generator_name),
+            ).fetchall()
+            if not rows:
+                continue
 
-        # Per-category breakdown
-        cats: dict[str, list] = {}
-        for r in rows:
-            cat = r["profile_category"]
-            if cat not in cats:
-                cats[cat] = []
-            cats[cat].append({
-                "tokens_per_sec": r["tokens_per_sec"],
-                "judge_score": r["judge_score"],
-            })
+            tps_vals = [r["tokens_per_sec"] for r in rows if r["tokens_per_sec"] is not None]
+            ttft_vals = [r["time_to_first_token"] for r in rows if r["time_to_first_token"] is not None]
+            time_vals = [r["total_time_ms"] for r in rows if r["total_time_ms"] is not None]
+            judge_vals = [r["judge_score"] for r in rows if r["judge_score"] is not None]
+            halluc_vals = [r["hallucination_count"] for r in rows if r["hallucination_count"] is not None]
+            vram_vals = [r["vram_mb"] for r in rows if r["vram_mb"] is not None]
 
-        cat_summary = {
-            cat: {
-                "count": len(v),
-                "avg_tps": sum(x["tokens_per_sec"] for x in v if x["tokens_per_sec"]) / max(1, sum(1 for x in v if x["tokens_per_sec"])),
-                "avg_judge": sum(x["judge_score"] for x in v if x["judge_score"]) / max(1, sum(1 for x in v if x["judge_score"])),
+            avg_tps = sum(tps_vals) / len(tps_vals) if tps_vals else None
+            p50_tps = statistics.median(tps_vals) if tps_vals else None
+            avg_ttft = sum(ttft_vals) / len(ttft_vals) if ttft_vals else None
+            avg_time = sum(time_vals) / len(time_vals) if time_vals else None
+            avg_judge = sum(judge_vals) / len(judge_vals) if judge_vals else None
+            total_halluc = sum(halluc_vals) if halluc_vals else None
+            avg_vram = sum(vram_vals) / len(vram_vals) if vram_vals else None
+
+            cats: dict[str, list] = {}
+            for r in rows:
+                cats.setdefault(r["profile_category"], []).append({
+                    "tokens_per_sec": r["tokens_per_sec"],
+                    "judge_score": r["judge_score"],
+                })
+            cat_summary = {
+                cat: {
+                    "count": len(v),
+                    "avg_tps": sum(x["tokens_per_sec"] for x in v if x["tokens_per_sec"]) / max(1, sum(1 for x in v if x["tokens_per_sec"])),
+                    "avg_judge": sum(x["judge_score"] for x in v if x["judge_score"]) / max(1, sum(1 for x in v if x["judge_score"])),
+                }
+                for cat, v in cats.items()
             }
-            for cat, v in cats.items()
-        }
 
-        # Upsert into battery_scores
-        existing = self.conn.execute(
-            "SELECT id, fp_count, fn_count FROM battery_scores WHERE run_id=? AND classifier_name=? AND generator_name=?",
-            (run_id, classifier_name, generator_name),
-        ).fetchone()
+            existing = self.conn.execute(
+                "SELECT id FROM battery_scores "
+                "WHERE run_id=? AND classifier_name=? AND generator_name=?",
+                (run_id, classifier_name, generator_name),
+            ).fetchone()
+            if existing:
+                self.conn.execute(
+                    """
+                    UPDATE battery_scores SET
+                        is_baseline=?, avg_judge_score=?, hallucination_count=?,
+                        avg_tokens_per_sec=?, p50_tokens_per_sec=?,
+                        avg_time_to_first_token=?, avg_total_time_ms=?,
+                        vram_mb=COALESCE(?, vram_mb), turn_count=?,
+                        scores_by_category_json=?
+                    WHERE id=?
+                    """,
+                    (
+                        int(is_baseline), avg_judge, total_halluc,
+                        avg_tps, p50_tps, avg_ttft, avg_time,
+                        avg_vram, len(rows), json.dumps(cat_summary), existing[0],
+                    ),
+                )
+            else:
+                self.conn.execute(
+                    """
+                    INSERT INTO battery_scores (
+                        run_id, classifier_name, generator_name, is_baseline,
+                        avg_judge_score, hallucination_count,
+                        avg_tokens_per_sec, p50_tokens_per_sec,
+                        avg_time_to_first_token, avg_total_time_ms,
+                        vram_mb, turn_count, scores_by_category_json
+                    ) VALUES (?,?,?,?, ?,?, ?,?, ?,?, ?,?,?)
+                    """,
+                    (
+                        run_id, classifier_name, generator_name, int(is_baseline),
+                        avg_judge, total_halluc, avg_tps, p50_tps,
+                        avg_ttft, avg_time, avg_vram, len(rows), json.dumps(cat_summary),
+                    ),
+                )
+            aggregated += 1
 
-        if existing:
-            self.conn.execute(
-                """
-                UPDATE battery_scores SET
-                    is_baseline=?, avg_judge_score=?, hallucination_count=?,
-                    avg_tokens_per_sec=?, p50_tokens_per_sec=?,
-                    avg_time_to_first_token=?, avg_total_time_ms=?,
-                    vram_mb=?, turn_count=?, scores_by_category_json=?
-                WHERE id=?
-                """,
-                (
-                    int(is_baseline), avg_judge, total_halluc,
-                    avg_tps, p50_tps,
-                    avg_ttft, avg_time,
-                    avg_vram, len(rows), json.dumps(cat_summary),
-                    existing[0],
-                ),
-            )
-        else:
-            self.conn.execute(
-                """
-                INSERT INTO battery_scores (
-                    run_id, classifier_name, generator_name, is_baseline,
-                    avg_judge_score, hallucination_count,
-                    avg_tokens_per_sec, p50_tokens_per_sec,
-                    avg_time_to_first_token, avg_total_time_ms,
-                    vram_mb, turn_count, scores_by_category_json
-                ) VALUES (?,?,?,?, ?,?, ?,?, ?,?, ?,?,?)
-                """,
-                (
-                    run_id, classifier_name, generator_name, int(is_baseline),
-                    avg_judge, total_halluc,
-                    avg_tps, p50_tps,
-                    avg_ttft, avg_time,
-                    avg_vram, len(rows), json.dumps(cat_summary),
-                ),
-            )
         self.conn.commit()
-        logger.info(f"Aggregated scores for run #{run_id}: avg_tps={avg_tps:.1f}" if avg_tps else f"Aggregated scores for run #{run_id}: no perf data")
+        logger.info(f"Aggregated scores for run #{run_id}: {aggregated} pair(s)")
 
     # ------------------------------------------------------------------
     # Queries

@@ -697,6 +697,43 @@ class BatteryEngine:
     # Quality phase
     # ------------------------------------------------------------------
 
+    async def _measure_ttft_turn(
+        self,
+        orchestrator: FastPipelineOrchestrator,
+        generator_client: InstrumentedOllamaClient,
+        message: str,
+        conversation_id: str | None,
+        client_ip: str,
+    ) -> float | None:
+        """
+        Drive ONE streaming turn through the production streaming path and
+        return TTFT (time-to-first-token) in seconds: wall-clock from request
+        start to the FIRST yielded ``{"type": "chunk"}`` event. Returns None if
+        the stream completes without ever yielding a chunk (e.g. a blocked or
+        errored turn) — never a fabricated 0.0.
+
+        The measured value is also written back onto
+        ``generator_client.last_ttft_s`` so downstream perf-capture can read it
+        the same way it reads the non-streaming eval metrics.
+
+        This is the ONLY battery code path that exercises
+        ``orchestrator.process_message_stream`` — the real ``/chat/stream``
+        production streaming path. The regular quality turns use the
+        non-streaming ``process_message``, for which TTFT is undefined.
+        """
+        start = time.time()
+        ttft_s: float | None = None
+        async for event in orchestrator.process_message_stream(
+            message=message,
+            conversation_id=conversation_id,
+            client_ip=client_ip,
+        ):
+            if event.get("type") == "chunk":
+                ttft_s = time.time() - start
+                break
+        generator_client.last_ttft_s = ttft_s
+        return ttft_s
+
     async def _run_quality_phase(
         self,
         run_id: int,
@@ -841,6 +878,61 @@ class BatteryEngine:
                     vram_mb=generator_vram_mb,
                     sent_at=sent_at,
                     received_at=received_at,
+                )
+
+            # --- Dedicated TTFT-streaming turn (Spec #213 / #308) ------------
+            # The per-turn loop above uses the NON-streaming process_message, for
+            # which time-to-first-token is undefined (recorded as NULL). To get a
+            # real TTFT signal we drive ONE extra turn per profile through the
+            # production streaming path (process_message_stream) and record the
+            # wall-clock time to the first streamed chunk. Only this probe turn
+            # carries a non-null time_to_first_token; every other per-turn metric
+            # is NULL, so it feeds avg_time_to_first_token without distorting the
+            # tokens/sec, judge, latency, or hallucination aggregates (each of
+            # which compute_scores filters on `is not None`, over success=1 rows).
+            if turns:
+                ttft_sent_at = datetime.now(UTC).isoformat()
+                ttft_conv_id = f"battery_ttft_{profile.id}_{int(time.time())}"
+                ttft_s: float | None = None
+                ttft_error: str | None = None
+                try:
+                    ttft_s = await self._measure_ttft_turn(
+                        orchestrator,
+                        generator_client,
+                        message=turns[0].message,
+                        conversation_id=ttft_conv_id,
+                        client_ip=_BATTERY_IP,
+                    )
+                except Exception as e:
+                    # A probe failure must never abort the quality phase.
+                    ttft_error = str(e)
+                    logger.warning(f"TTFT probe error ({profile.id}): {e}")
+
+                self._db.record_turn(
+                    run_id=run_id,
+                    classifier_name=classifier,
+                    generator_name=generator,
+                    profile_id=profile.id,
+                    profile_category=profile.category.value,
+                    turn_number=0,  # 0 = dedicated TTFT probe, not a conversation turn
+                    intent="ttft_probe",
+                    total_time_ms=None,
+                    time_to_first_token=ttft_s,
+                    eval_count=None,
+                    eval_duration_ns=None,
+                    tokens_per_sec=None,
+                    prompt_eval_count=None,
+                    prompt_eval_duration_ns=None,
+                    prompt_eval_rate=None,
+                    judge_score=None,
+                    hallucination_count=None,
+                    user_message=turns[0].message,
+                    response_content=None,
+                    success=ttft_s is not None,
+                    error_message=ttft_error,
+                    vram_mb=generator_vram_mb,
+                    sent_at=ttft_sent_at,
+                    received_at=datetime.now(UTC).isoformat(),
                 )
 
     # ------------------------------------------------------------------

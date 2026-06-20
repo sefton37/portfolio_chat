@@ -96,6 +96,10 @@ class ModelConfig:
 
     # Ollama settings
     OLLAMA_URL: str = _env_str("OLLAMA_URL", "http://localhost:11434")
+    # How long Ollama keeps chat models resident in VRAM between requests.
+    # Resets the unload timer on every /api/chat call; "60m" far exceeds the
+    # Ollama built-in default of "5m", preventing cold-load stalls under trickle traffic.
+    OLLAMA_KEEP_ALIVE: str = _env_str("OLLAMA_KEEP_ALIVE", "60m")
 
     # Timeouts per model tier (seconds)
     CLASSIFIER_TIMEOUT: float = _env_float("CLASSIFIER_TIMEOUT", 10.0, min_val=5.0)

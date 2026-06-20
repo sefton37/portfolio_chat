@@ -136,6 +136,7 @@ class AsyncOllamaClient:
         temperature: float = 0.7,
         layer: str | None = None,
         purpose: str | None = None,
+        keep_alive: str = MODELS.OLLAMA_KEEP_ALIVE,
     ) -> str:
         """
         Send a chat request and get a text response.
@@ -148,6 +149,7 @@ class AsyncOllamaClient:
             temperature: Sampling temperature.
             layer: Which pipeline layer is calling (for metrics).
             purpose: Purpose of the call (for metrics).
+            keep_alive: How long Ollama keeps the model in VRAM (e.g., "60m", "1h").
 
         Returns:
             The generated text response.
@@ -175,6 +177,7 @@ class AsyncOllamaClient:
                 {"role": "user", "content": user},
             ],
             "stream": False,
+            "keep_alive": keep_alive,
             "options": {
                 "temperature": temperature,
             },
@@ -265,6 +268,7 @@ class AsyncOllamaClient:
         timeout: float | None = None,
         layer: str | None = None,
         purpose: str | None = None,
+        keep_alive: str = MODELS.OLLAMA_KEEP_ALIVE,
     ) -> dict[str, Any]:
         """
         Send a chat request expecting JSON output.
@@ -276,6 +280,7 @@ class AsyncOllamaClient:
             timeout: Request timeout in seconds.
             layer: Which pipeline layer is calling (for metrics).
             purpose: Purpose of the call (for metrics).
+            keep_alive: How long Ollama keeps the model in VRAM (e.g., "60m", "1h").
 
         Returns:
             Parsed JSON response as a dictionary.
@@ -300,6 +305,7 @@ class AsyncOllamaClient:
                 {"role": "user", "content": user},
             ],
             "stream": False,
+            "keep_alive": keep_alive,
             "format": "json",
             "options": {
                 "temperature": 0.0,  # Deterministic for classification
@@ -408,6 +414,7 @@ class AsyncOllamaClient:
         temperature: float = 0.7,
         layer: str | None = None,
         purpose: str | None = None,
+        keep_alive: str = MODELS.OLLAMA_KEEP_ALIVE,
     ) -> str:
         """
         Send a chat request with conversation history.
@@ -420,6 +427,7 @@ class AsyncOllamaClient:
             temperature: Sampling temperature.
             layer: Which pipeline layer is calling (for metrics).
             purpose: Purpose of the call (for metrics).
+            keep_alive: How long Ollama keeps the model in VRAM (e.g., "60m", "1h").
 
         Returns:
             The generated text response.
@@ -443,6 +451,7 @@ class AsyncOllamaClient:
             "model": resolved_model,
             "messages": all_messages,
             "stream": False,
+            "keep_alive": keep_alive,
             "options": {
                 "temperature": temperature,
             },
@@ -519,6 +528,7 @@ class AsyncOllamaClient:
         system: str,
         user: str,
         model: str | None = None,
+        keep_alive: str = MODELS.OLLAMA_KEEP_ALIVE,
     ) -> AsyncIterator[str]:
         """
         Send a chat request and stream the response.
@@ -527,6 +537,10 @@ class AsyncOllamaClient:
             system: System prompt.
             user: User message.
             model: Model to use.
+            keep_alive: How long Ollama keeps the model loaded after this call
+                (DEC-D / Spec #211). This is the production frontend path
+                (Chat.astro -> /chat/stream -> orchestrator_fast.chat_stream),
+                so it must carry keep_alive like the non-streaming chat methods.
 
         Yields:
             Chunks of the generated response.
@@ -541,6 +555,7 @@ class AsyncOllamaClient:
                 {"role": "user", "content": user},
             ],
             "stream": True,
+            "keep_alive": keep_alive,
         }
 
         try:

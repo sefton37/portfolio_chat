@@ -1,5 +1,6 @@
 """Tests for configuration module."""
 
+import importlib
 import os
 from unittest import mock
 
@@ -71,3 +72,26 @@ class TestConversationLimits:
         assert CONVERSATION.MAX_TURNS >= 2
         assert CONVERSATION.TTL_SECONDS >= 60
         assert CONVERSATION.MAX_HISTORY_TOKENS >= 500
+
+
+class TestModelConfigKeepAlive:
+    """Tests for OLLAMA_KEEP_ALIVE field on ModelConfig (DEC-D / Spec #211)."""
+
+    def test_ollama_keep_alive_config_default(self):
+        """MODELS singleton has OLLAMA_KEEP_ALIVE attribute defaulting to '60m'. Maps to DOD-1."""
+        assert hasattr(MODELS, "OLLAMA_KEEP_ALIVE")
+        assert MODELS.OLLAMA_KEEP_ALIVE == "60m"
+
+    def test_ollama_keep_alive_env_override(self, monkeypatch):
+        """OLLAMA_KEEP_ALIVE field reads from environment at class-definition time. Maps to DOD-9."""
+        import portfolio_chat.config as config_module
+
+        monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "120m")
+        try:
+            importlib.reload(config_module)
+            reloaded_value = config_module.ModelConfig().OLLAMA_KEEP_ALIVE
+            assert reloaded_value == "120m"
+        finally:
+            # Remove env var (monkeypatch handles it) then reload to restore default
+            monkeypatch.delenv("OLLAMA_KEEP_ALIVE", raising=False)
+            importlib.reload(config_module)

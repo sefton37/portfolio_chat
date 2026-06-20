@@ -295,6 +295,117 @@ class TestAsyncOllamaClientHealthCheck:
             assert result is False
 
 
+class TestAsyncOllamaClientKeepAlive:
+    """Tests for keep_alive parameter injection in chat methods (DEC-D / Spec #211)."""
+
+    @pytest.mark.asyncio
+    async def test_chat_text_sends_keep_alive(self):
+        """chat_text injects keep_alive as a top-level POST payload key, not inside options. Maps to DOD-5, DOD-10."""
+        with patch.object(AsyncOllamaClient, "_get_client") as mock_get_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "message": {"content": "response text"}
+            }
+
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            client = AsyncOllamaClient()
+            await client.chat_text(system="s", user="u", model="m")
+
+            payload = mock_client.post.call_args.kwargs["json"]
+            assert "keep_alive" in payload
+            assert payload["keep_alive"] == "60m"
+            assert "keep_alive" not in payload.get("options", {})
+
+    @pytest.mark.asyncio
+    async def test_chat_json_sends_keep_alive(self):
+        """chat_json injects keep_alive as a top-level POST payload key, not inside options. Maps to DOD-5, DOD-10."""
+        with patch.object(AsyncOllamaClient, "_get_client") as mock_get_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "message": {"content": '{"result": "ok"}'}
+            }
+
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            client = AsyncOllamaClient()
+            await client.chat_json(system="s", user="u", model="m")
+
+            payload = mock_client.post.call_args.kwargs["json"]
+            assert "keep_alive" in payload
+            assert payload["keep_alive"] == "60m"
+            assert "keep_alive" not in payload.get("options", {})
+
+    @pytest.mark.asyncio
+    async def test_chat_with_history_sends_keep_alive(self):
+        """chat_with_history injects keep_alive as a top-level POST payload key, not inside options. Maps to DOD-5, DOD-10."""
+        with patch.object(AsyncOllamaClient, "_get_client") as mock_get_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "message": {"content": "response with history"}
+            }
+
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            client = AsyncOllamaClient()
+            await client.chat_with_history(
+                system="s",
+                messages=[{"role": "user", "content": "hi"}],
+                model="m",
+            )
+
+            payload = mock_client.post.call_args.kwargs["json"]
+            assert "keep_alive" in payload
+            assert payload["keep_alive"] == "60m"
+            assert "keep_alive" not in payload.get("options", {})
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_sends_keep_alive(self):
+        """chat_stream injects keep_alive as a top-level payload key on the streaming
+        /api/chat call — the production frontend path (Chat.astro -> /chat/stream ->
+        orchestrator_fast.chat_stream). Maps to DOD-5, DOD-10, DOD-15."""
+
+        class FakeStreamResponse:
+            status_code = 200
+
+            async def aiter_lines(self):
+                yield '{"message": {"content": "hello"}}'
+
+            async def aread(self):
+                return b""
+
+        class FakeStreamCM:
+            async def __aenter__(self):
+                return FakeStreamResponse()
+
+            async def __aexit__(self, *args):
+                return False
+
+        with patch.object(AsyncOllamaClient, "_get_client") as mock_get_client:
+            mock_client = MagicMock()
+            # client.stream(...) is called synchronously and returns an async CM
+            mock_client.stream = MagicMock(return_value=FakeStreamCM())
+            mock_get_client.return_value = mock_client
+
+            client = AsyncOllamaClient()
+            chunks = [c async for c in client.chat_stream(system="s", user="u", model="m")]
+
+            assert chunks == ["hello"]
+            payload = mock_client.stream.call_args.kwargs["json"]
+            assert "keep_alive" in payload
+            assert payload["keep_alive"] == "60m"
+            assert "keep_alive" not in payload.get("options", {})
+
+
 class TestOllamaExceptions:
     """Tests for Ollama exception hierarchy."""
 

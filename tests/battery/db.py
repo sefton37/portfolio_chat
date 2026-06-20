@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS battery_scores (
     avg_total_time_ms       REAL,
     fp_count                INTEGER,
     fn_count                INTEGER,
+    leak_fn_count           INTEGER,
+    timeout_fn_count        INTEGER,
     vram_mb                 REAL,
     turn_count              INTEGER,
     scores_by_category_json TEXT
@@ -109,6 +111,15 @@ class BatteryDB:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(_DDL)
         self.conn.commit()
+
+        # Idempotent migration: add new columns to pre-existing DBs without crashing.
+        for _col in ("leak_fn_count INTEGER", "timeout_fn_count INTEGER"):
+            try:
+                self.conn.execute(f"ALTER TABLE battery_scores ADD COLUMN {_col}")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
         logger.debug(f"BatteryDB opened at {self.db_path}")
 
     # ------------------------------------------------------------------
@@ -247,6 +258,8 @@ class BatteryDB:
         fn_count: int,
         is_baseline: bool = False,
         vram_mb: float | None = None,
+        leak_fn_count: int = 0,
+        timeout_fn_count: int = 0,
     ) -> None:
         """
         Upsert security FP/FN counts into battery_scores.
@@ -254,6 +267,10 @@ class BatteryDB:
         Called after the security phase completes for a (classifier, generator) pair.
         If a row already exists (from compute_scores), update the fp/fn columns.
         Otherwise insert a minimal row.
+
+        fn_count is the legacy sum (leak_fn_count + timeout_fn_count) kept for
+        back-compat. leak_fn_count and timeout_fn_count are the split metrics
+        added by Spec #209 Work Item A.
         """
         existing = self.conn.execute(
             "SELECT id FROM battery_scores WHERE run_id=? AND classifier_name=? AND generator_name=?",
@@ -262,20 +279,20 @@ class BatteryDB:
 
         if existing:
             self.conn.execute(
-                "UPDATE battery_scores SET fp_count=?, fn_count=? WHERE id=?",
-                (fp_count, fn_count, existing[0]),
+                "UPDATE battery_scores SET fp_count=?, fn_count=?, leak_fn_count=?, timeout_fn_count=? WHERE id=?",
+                (fp_count, fn_count, leak_fn_count, timeout_fn_count, existing[0]),
             )
         else:
             self.conn.execute(
                 """
                 INSERT INTO battery_scores
                     (run_id, classifier_name, generator_name,
-                     is_baseline, fp_count, fn_count, vram_mb)
-                VALUES (?,?,?, ?,?,?,?)
+                     is_baseline, fp_count, fn_count, leak_fn_count, timeout_fn_count, vram_mb)
+                VALUES (?,?,?, ?,?,?,?,?,?)
                 """,
                 (
                     run_id, classifier_name, generator_name,
-                    int(is_baseline), fp_count, fn_count, vram_mb,
+                    int(is_baseline), fp_count, fn_count, leak_fn_count, timeout_fn_count, vram_mb,
                 ),
             )
         self.conn.commit()

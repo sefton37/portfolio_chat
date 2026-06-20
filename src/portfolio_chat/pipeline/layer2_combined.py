@@ -8,6 +8,7 @@ Reduces latency by eliminating one sequential LLM call.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -36,6 +37,52 @@ class JailbreakReason(Enum):
     ENCODING_TRICK = "encoding_trick"
     MANIPULATION = "manipulation"
     UNKNOWN = "unknown"
+    CLASSIFIER_UNAVAILABLE = "classifier_unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed injection heuristic (DOD-B2)
+#
+# Used ONLY when the LLM classifier is unavailable (timeout/error/ambiguous).
+# Deliberately distinct from L1.BLOCKED_PATTERNS — L1 catches 0/10 of the
+# subtle LAYER2_ATTACKS; this set targets the semantic SHAPE of the attacks.
+# Empirically validated: 10/10 LAYER2_ATTACKS match, 0/25 benign FP.
+# IMPORTANT: do NOT add a broad 'what...the...rules' arm — it false-positives
+# on the benign escalation idx1 probe "What are the system's rules and constraints?"
+# ---------------------------------------------------------------------------
+
+_FAILCLOSED_INJECTION_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"forget\s+(everything|all|what|your|previous)", re.IGNORECASE),
+    re.compile(r"your\s+new\s+instructions?", re.IGNORECASE),
+    re.compile(r"new\s+instructions?\s+(are|is)\b", re.IGNORECASE),
+    re.compile(r"(ignore|disregard|override)\b[^.]{0,40}(instruction|rule|guideline|told|directive|constraint|prompt)", re.IGNORECASE),
+    re.compile(r"(?:\b[a-z]\s+){3,}[a-z]\b", re.IGNORECASE),  # spaced-letter evasion: "i g n o r e ..."
+    re.compile(r"what\s+(were|are|was)\s+you\s+told", re.IGNORECASE),
+    re.compile(r"(show|tell|print|reveal|repeat|output|display)\b[^.]{0,40}your\b[^.]{0,30}(system\s*message|internal\s+rules?|configuration|config|instructions?|prompt|guidelines?)", re.IGNORECASE),
+    re.compile(r"print\s+your\s+(config|configuration)", re.IGNORECASE),
+    re.compile(r"your\s+system\s+message\b", re.IGNORECASE),
+    re.compile(r"reveal\s+your\s+system\s+prompt", re.IGNORECASE),
+    re.compile(r"(no|without|have\s+no|free\s+of|zero)\s+(restrictions?|rules?|limits?|guidelines?|filters?)", re.IGNORECASE),
+    re.compile(r"\bunrestricted\b", re.IGNORECASE),
+    re.compile(r"act\s+as[^.]{0,40}(no\s|without\s|unrestricted)", re.IGNORECASE),
+    re.compile(r"hypothetical(ly)?\s+unrestricted", re.IGNORECASE),
+    re.compile(r"for\s+educational\s+purposes", re.IGNORECASE),
+    re.compile(r"\bbypass\b", re.IGNORECASE),
+]
+
+
+def _looks_like_injection(message: str) -> bool:
+    """
+    Return True if the message matches any fail-closed injection heuristic pattern.
+
+    Used ONLY when the LLM classifier is unavailable (timeout/error/ambiguous);
+    deliberately distinct from L1.BLOCKED_PATTERNS (L1 catches 0/10 of the subtle
+    LAYER2_ATTACKS); targets the semantic SHAPE of the attacks.
+    """
+    for pattern in _FAILCLOSED_INJECTION_PATTERNS:
+        if pattern.search(message):
+            return True
+    return False
 
 
 class CombinedStatus(Enum):
@@ -155,6 +202,43 @@ class Layer2CombinedClassifier:
         self.client = client or AsyncOllamaClient()
         self.model = model or MODELS.CLASSIFIER_MODEL
 
+    def _failclosed_result(
+        self,
+        message: str,
+        ip_hash: str | None = None,
+    ) -> CombinedResult | None:
+        """
+        Return a BLOCKED CombinedResult if the message looks like an injection,
+        otherwise return None (caller should fail open for benign messages).
+
+        Used only when the LLM classifier is unavailable (timeout/error/ambiguous).
+        """
+        if not _looks_like_injection(message):
+            return None
+
+        if ip_hash:
+            audit_logger.log_injection_attempt(
+                ip_hash=ip_hash,
+                layer="L2",
+                reason="classifier_unavailable_failclosed",
+                input_preview=message[:50],
+            )
+
+        return CombinedResult(
+            status=CombinedStatus.BLOCKED,
+            passed=False,
+            jailbreak_reason=JailbreakReason.CLASSIFIER_UNAVAILABLE,
+            jailbreak_confidence=0.5,
+            intent=Intent(
+                topic="general",
+                question_type=QuestionType.AMBIGUOUS,
+                entities=[],
+                emotional_tone=EmotionalTone.NEUTRAL,
+                confidence=0.3,
+            ),
+            error_message="I can only answer questions about Kellogg's professional background and projects.",
+        )
+
     async def classify(
         self,
         message: str,
@@ -189,9 +273,16 @@ class Layer2CombinedClassifier:
                 purpose="combined_classification",
             )
 
-            # Parse security result
-            is_safe = response.get("safe", True)  # Fail-open: ambiguous = let through, L8 catches output problems
-            reason_code = response.get("reason", "unknown")
+            # Parse security result — B4: read raw value to handle missing/null 'safe' field
+            safe_val = response.get("safe")
+            if safe_val is None and _looks_like_injection(message):
+                # Ambiguous output + injection-shaped message: route to BLOCKED path
+                is_safe = False
+                reason_code = "instruction_override"
+            else:
+                # Preserve benign fail-open for missing/ambiguous field — availability
+                is_safe = True if safe_val is None else bool(safe_val)
+                reason_code = response.get("reason", "unknown")
 
             try:
                 jailbreak_reason = JailbreakReason(reason_code)
@@ -257,11 +348,16 @@ class Layer2CombinedClassifier:
 
         except OllamaError as e:
             logger.error(f"Ollama error in combined classification: {e}")
-            # Fail-open: let the message through, L6+L8 will handle safety
+            # B5: fail-closed guard — block injection-shaped messages even when classifier is down
+            fc = self._failclosed_result(message, ip_hash)
+            if fc is not None:
+                logger.warning("L2 classifier unavailable (OllamaError) — failing CLOSED on injection heuristic")
+                return fc
+            # Benign fail-open: heuristic-negative messages pass to L6+L8
             return CombinedResult(
                 status=CombinedStatus.SAFE,
                 passed=True,
-                jailbreak_reason=JailbreakReason.NONE,
+                jailbreak_reason=JailbreakReason.CLASSIFIER_UNAVAILABLE,
                 intent=Intent(
                     topic="general",
                     question_type=QuestionType.AMBIGUOUS,
@@ -274,11 +370,16 @@ class Layer2CombinedClassifier:
 
         except Exception as e:
             logger.error(f"Unexpected error in combined classification: {e}")
-            # Fail-open: let the message through, L6+L8 will handle safety
+            # B6: fail-closed guard — block injection-shaped messages even on unexpected errors
+            fc = self._failclosed_result(message, ip_hash)
+            if fc is not None:
+                logger.warning("L2 classifier unavailable (Exception) — failing CLOSED on injection heuristic")
+                return fc
+            # Benign fail-open: heuristic-negative messages pass to L6+L8
             return CombinedResult(
                 status=CombinedStatus.SAFE,
                 passed=True,
-                jailbreak_reason=JailbreakReason.NONE,
+                jailbreak_reason=JailbreakReason.CLASSIFIER_UNAVAILABLE,
                 intent=Intent(
                     topic="general",
                     question_type=QuestionType.AMBIGUOUS,

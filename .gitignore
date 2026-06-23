@@ -96,3 +96,9 @@ context/professional/*.docx
 
 # Jupyter Notebooks (if any)
 .ipynb_checkpoints/
+
+# coverage battery local artifacts
+tests/coverage/results/*.db
+tests/coverage/results/*.db-*
+tests/coverage/__pycache__/
+tests/coverage/**/__pycache__/

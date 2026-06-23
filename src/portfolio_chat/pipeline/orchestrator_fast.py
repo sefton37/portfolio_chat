@@ -14,6 +14,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from collections.abc import AsyncIterator
+from typing import Any
+
+# Sentinel for "caller did not supply analytics_storage" — lets explicit None pass through.
+_UNSET: Any = object()
 
 from portfolio_chat.analytics.storage import ConversationStorage as AnalyticsStorage
 from portfolio_chat.config import ANALYTICS, PIPELINE, MODELS
@@ -73,14 +77,18 @@ class FastPipelineOrchestrator:
         conversation_manager: ConversationManager | None = None,
         ollama_client: AsyncOllamaClient | None = None,
         contact_storage: ContactStorage | None = None,
-        analytics_storage: AnalyticsStorage | None = None,
+        analytics_storage: AnalyticsStorage | None = _UNSET,  # type: ignore[assignment]
     ) -> None:
         # Shared components
         self.rate_limiter = rate_limiter or InMemoryRateLimiter()
         self.conversation_manager = conversation_manager or ConversationManager()
         self.ollama_client = ollama_client or AsyncOllamaClient()
         self.contact_storage = contact_storage or ContactStorage()
-        self.analytics_storage = analytics_storage or (AnalyticsStorage() if ANALYTICS.ENABLED else None)
+        # Use sentinel to distinguish "omitted" from explicit None: explicit None disables analytics.
+        if analytics_storage is _UNSET:
+            self.analytics_storage = AnalyticsStorage() if ANALYTICS.ENABLED else None
+        else:
+            self.analytics_storage = analytics_storage
 
         # Initialize optimized layers
         self.layer0 = Layer0NetworkGateway(rate_limiter=self.rate_limiter)

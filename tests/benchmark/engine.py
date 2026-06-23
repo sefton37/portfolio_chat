@@ -526,6 +526,14 @@ class BenchmarkEngine:
             ),
             analytics_storage=None,
         )
+        # Leak guard: confirm analytics is disabled so benchmark traffic cannot
+        # pollute production data/conversations/.
+        orchestrator.analytics_storage = None
+        if orchestrator.analytics_storage is not None:
+            raise RuntimeError(
+                "LEAK GUARD FAILED: analytics_storage is not None after construction; "
+                "battery test traffic would pollute prod data/conversations/."
+            )
 
         # For Anthropic generators, re-wire layer2 to use the Ollama classifier
         # so only the response generation (layer6) uses the Anthropic model.

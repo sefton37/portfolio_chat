@@ -81,6 +81,8 @@ data/conversations/
 data/cache/
 # Quarantined test-generated contact messages (PII — never commit)
 data/contacts_quarantine/
+# Quarantined test-generated conversation logs (IP hashes — never commit)
+data/conversations_quarantine/
 # Battery harness run artifacts (regenerated each run)
 tests/battery/results/*.db*
 tests/battery/results/*.md

@@ -635,6 +635,14 @@ class BatteryEngine:
             contact_storage=contact_store,
             analytics_storage=None,
         )
+        # Leak guard: confirm analytics is disabled so battery traffic cannot
+        # pollute production data/conversations/.
+        orchestrator.analytics_storage = None
+        if orchestrator.analytics_storage is not None:
+            raise RuntimeError(
+                "LEAK GUARD FAILED: analytics_storage is not None after construction; "
+                "battery test traffic would pollute prod data/conversations/."
+            )
         # classifier_inject: layer2_combined.client override (plan section 3, DOD-19)
         orchestrator.layer2_combined.client = classifier_client
         # generator model override (layer6.model attribute, plan section 3, DOD-19)

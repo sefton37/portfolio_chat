@@ -36,10 +36,19 @@ _DEFAULT_CONTACTS_DIR: Path = Path(__file__).parent.parent.parent.parent / "data
 def _sendmail(message_text: str) -> bool:
     """Send a pre-formatted RFC-822 message via /usr/sbin/sendmail.
 
+    The recipient is passed explicitly on argv (``-- CONTACT_RECIPIENT``) rather
+    than via ``sendmail -t``. Under ``-t``, sendmail derives the envelope
+    recipients FROM the message's To/Cc/Bcc headers — so a header-injection
+    regression could still steer delivery. Passing the recipient on argv makes
+    any injected recipient header inert: only CONTACT_RECIPIENT is ever
+    delivered to, whatever headers the message carries. This is defense-in-depth
+    behind the CR/LF stripping in _format_email. The ``--`` terminates option
+    parsing so CONTACT_RECIPIENT can never be misread as a flag.
+
     Returns True if sendmail exited 0, False otherwise.
     """
     result = subprocess.run(
-        [SENDMAIL_PATH, "-t"],
+        [SENDMAIL_PATH, "--", CONTACT_RECIPIENT],
         input=message_text,
         capture_output=True,
         text=True,

@@ -12,7 +12,8 @@ be smuggled in (CWE-93).
 
 from __future__ import annotations
 
-from portfolio_chat.contact.sweeper import CONTACT_RECIPIENT, _format_email
+import portfolio_chat.contact.sweeper as sweeper
+from portfolio_chat.contact.sweeper import CONTACT_RECIPIENT, _format_email, _sendmail
 
 
 def _headers_of(rendered: str) -> list[str]:
@@ -112,6 +113,45 @@ def test_only_intended_recipient_header_present() -> None:
         h for h in _headers_of(rendered) if h.lower().startswith(("to:", "cc:", "bcc:"))
     ]
     assert recipient_headers == [f"To: {CONTACT_RECIPIENT}"]
+
+
+def test_sendmail_passes_recipient_on_argv_not_dash_t(monkeypatch) -> None:
+    """Defense-in-depth: the mailer must NOT use ``sendmail -t`` (which reads
+    recipients from headers) and MUST pass CONTACT_RECIPIENT explicitly on argv.
+
+    This makes any injected To/Cc/Bcc header inert even if the CR/LF stripping
+    in _format_email ever regressed.
+    """
+    captured: dict[str, object] = {}
+
+    class _Result:
+        returncode = 0
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["input"] = kwargs.get("input")
+        return _Result()
+
+    monkeypatch.setattr(sweeper.subprocess, "run", fake_run)
+
+    # A message whose headers try to smuggle an extra recipient.
+    msg = (
+        "From: portfolio-chat@corellia.localdomain\n"
+        f"To: {CONTACT_RECIPIENT}\n"
+        "Subject: x\n"
+        "Bcc: attacker@evil.com\n"
+        "\n"
+        "body\n"
+    )
+    assert _sendmail(msg) is True
+
+    argv = captured["argv"]
+    assert "-t" not in argv, "sendmail -t derives recipients from headers — forbidden"
+    assert CONTACT_RECIPIENT in argv, "recipient must be passed explicitly on argv"
+    # The only recipient-looking argv entry is CONTACT_RECIPIENT; the injected
+    # attacker address must never appear as an argv recipient.
+    assert "attacker@evil.com" not in argv
 
 
 def test_benign_message_still_renders_correctly() -> None:

@@ -54,8 +54,11 @@ def _format_email(data: dict[str, object]) -> str:
     """Build an RFC-822 email string from a contact message dict."""
     contact_id = data.get("id", "")
     timestamp = data.get("timestamp", "")
-    sender_name = data.get("sender_name") or ""
-    sender_email = data.get("sender_email") or ""
+    # Strip CR/LF: sender_name feeds the Subject header and sender_email the
+    # Reply-To header below, so an embedded newline could inject arbitrary
+    # headers (e.g. a smuggled "Bcc:") and turn this into an open mail relay.
+    sender_name = (data.get("sender_name") or "").replace("\r", " ").replace("\n", " ")
+    sender_email = (data.get("sender_email") or "").replace("\r", "").replace("\n", "")
     conversation_id = data.get("conversation_id") or ""
     message = data.get("message", "")
     context = data.get("context") or ""
